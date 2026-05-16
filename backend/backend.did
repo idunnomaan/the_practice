@@ -1,3 +1,35 @@
-service : {
-  greet : (name : text) -> (text) query
-}
+type UserRecord = 
+ record {
+   addedAt: Time;
+   addedBy: principal;
+   role: Role;
+   suspended: bool;
+ };
+type Time = int;
+type ThePractice = 
+ service {
+   addUser: (p: principal, role: Role) -> ();
+   getMasterController: () -> (principal) query;
+   getMyRole: () -> (opt Role) query;
+   getOperationsPrincipal: () -> (opt principal) query;
+   getUserCount: () -> (nat) query;
+   grantOperations: (p: principal) -> ();
+   listUsers: () -> (vec record {
+                           principal;
+                           UserRecord;
+                         }) query;
+   removeUser: (p: principal) -> ();
+   revokeOperations: () -> ();
+   setUserRole: (p: principal, role: Role) -> ();
+   suspendUser: (p: principal) -> ();
+   transferMasterController: (p: principal) -> ();
+   unsuspendUser: (p: principal) -> ();
+   whoAmI: () -> (principal) query;
+ };
+type Role = 
+ variant {
+   Associate;
+   Partner;
+   Staff;
+ };
+service : (masterControllerArg: principal) -> ThePractice
