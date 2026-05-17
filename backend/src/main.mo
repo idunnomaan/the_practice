@@ -2,6 +2,7 @@ import Principal "mo:core/Principal";
 import Map "mo:core/pure/Map";
 import Time "mo:core/Time";
 import Iter "mo:core/Iter";
+import Result "mo:core/Result";
 import Types "./Types";
 import Auth "./Auth";
 
@@ -37,13 +38,14 @@ shared(installer) persistent actor class ThePractice(
 
   // INV-4: suspension blocks role checks for any role, even Partner.
   // Closes over actor-state `users`; not in Auth.mo to avoid exposing Map.Map.
-  func requireRole(caller : Principal, minRole : Role) {
+  func requireRole(caller : Principal, minRole : Role) : Result.Result<(), Text> {
     switch (Map.get(users, Principal.compare, caller)) {
       case (?record) {
-        assert not record.suspended;
-        assert Auth.roleRank(record.role) >= Auth.roleRank(minRole);
+        if (record.suspended) return #err("not authorized");
+        if (Auth.roleRank(record.role) < Auth.roleRank(minRole)) return #err("not authorized");
+        #ok(())
       };
-      case null { assert false }; // not registered
+      case null { #err("not authorized") };
     };
   };
 
@@ -64,39 +66,41 @@ shared(installer) persistent actor class ThePractice(
   public query func getOperationsPrincipal() : async ?Principal { operationsPrincipal };
 
   public query ({ caller }) func getUserCount() : async Nat {
-    requireRole(caller, #Partner);
+    switch (requireRole(caller, #Partner)) { case (#err(_)) assert false; case (#ok) {} };
     Map.size(users);
   };
 
   public query ({ caller }) func listUsers() : async [(Principal, UserRecord)] {
-    requireRole(caller, #Partner);
+    switch (requireRole(caller, #Partner)) { case (#err(_)) assert false; case (#ok) {} };
     Iter.toArray(Map.entries(users));
   };
 
   // ── Updates ──────────────────────────────────────────────────────────────
   // Every update: (1) reject anonymous, (2) role/controller check, (3) audit before return.
 
-  public shared ({ caller }) func grantOperations(p : Principal) : async () {
-    Auth.requireAuthenticated(caller);
-    Auth.requireMasterController(caller, masterController);
+  public shared ({ caller }) func grantOperations(p : Principal) : async Result.Result<(), Text> {
+    switch (Auth.requireAuthenticated(caller)) { case (#err(e)) { return #err(e) }; case (#ok) {} };
+    switch (Auth.requireMasterController(caller, masterController)) { case (#err(e)) { return #err(e) }; case (#ok) {} };
     assert not Principal.isAnonymous(p);            // INV-1
     assert p != masterController;
     assert Map.get(users, Principal.compare, p) == null; // INV-3: ops never in users registry
     assert operationsPrincipal == null;             // must revoke first
     operationsPrincipal := ?p;
     audit(caller, "grantOperations", ?p);
+    #ok(())
   };
 
-  public shared ({ caller }) func revokeOperations() : async () {
-    Auth.requireAuthenticated(caller);
-    Auth.requireMasterController(caller, masterController);
+  public shared ({ caller }) func revokeOperations() : async Result.Result<(), Text> {
+    switch (Auth.requireAuthenticated(caller)) { case (#err(e)) { return #err(e) }; case (#ok) {} };
+    switch (Auth.requireMasterController(caller, masterController)) { case (#err(e)) { return #err(e) }; case (#ok) {} };
     operationsPrincipal := null; // idempotent
     audit(caller, "revokeOperations", null);
+    #ok(())
   };
 
-  public shared ({ caller }) func transferMasterController(p : Principal) : async () {
-    Auth.requireAuthenticated(caller);
-    Auth.requireMasterController(caller, masterController);
+  public shared ({ caller }) func transferMasterController(p : Principal) : async Result.Result<(), Text> {
+    switch (Auth.requireAuthenticated(caller)) { case (#err(e)) { return #err(e) }; case (#ok) {} };
+    switch (Auth.requireMasterController(caller, masterController)) { case (#err(e)) { return #err(e) }; case (#ok) {} };
     assert not Principal.isAnonymous(p);            // INV-1
     switch operationsPrincipal {
       case (?ops) { assert p != ops };
@@ -110,11 +114,12 @@ shared(installer) persistent actor class ThePractice(
     masterController := p;
     // INV-2: old master controller stays as Partner — no removal here
     audit(caller, "transferMasterController", ?p);
+    #ok(())
   };
 
-  public shared ({ caller }) func addUser(p : Principal, role : Role) : async () {
-    Auth.requireAuthenticated(caller);
-    requireRole(caller, #Partner);
+  public shared ({ caller }) func addUser(p : Principal, role : Role) : async Result.Result<(), Text> {
+    switch (Auth.requireAuthenticated(caller)) { case (#err(e)) { return #err(e) }; case (#ok) {} };
+    switch (requireRole(caller, #Partner)) { case (#err(e)) { return #err(e) }; case (#ok) {} };
     assert not Principal.isAnonymous(p);            // INV-1
     assert Map.get(users, Principal.compare, p) == null; // cannot already be registered
     switch operationsPrincipal {
@@ -128,11 +133,12 @@ shared(installer) persistent actor class ThePractice(
       suspended = false;
     });
     audit(caller, "addUser", ?p);
+    #ok(())
   };
 
-  public shared ({ caller }) func setUserRole(p : Principal, role : Role) : async () {
-    Auth.requireAuthenticated(caller);
-    requireRole(caller, #Partner);
+  public shared ({ caller }) func setUserRole(p : Principal, role : Role) : async Result.Result<(), Text> {
+    switch (Auth.requireAuthenticated(caller)) { case (#err(e)) { return #err(e) }; case (#ok) {} };
+    switch (requireRole(caller, #Partner)) { case (#err(e)) { return #err(e) }; case (#ok) {} };
     assert p != masterController;                   // INV-5: must transferMasterController first
     switch (Map.get(users, Principal.compare, p)) {
       case (?record) {
@@ -146,11 +152,12 @@ shared(installer) persistent actor class ThePractice(
       case null { assert false };                   // user not found
     };
     audit(caller, "setUserRole", ?p);
+    #ok(())
   };
 
-  public shared ({ caller }) func suspendUser(p : Principal) : async () {
-    Auth.requireAuthenticated(caller);
-    requireRole(caller, #Partner);
+  public shared ({ caller }) func suspendUser(p : Principal) : async Result.Result<(), Text> {
+    switch (Auth.requireAuthenticated(caller)) { case (#err(e)) { return #err(e) }; case (#ok) {} };
+    switch (requireRole(caller, #Partner)) { case (#err(e)) { return #err(e) }; case (#ok) {} };
     assert p != masterController;                   // cannot suspend the master controller
     switch (Map.get(users, Principal.compare, p)) {
       case (?record) {
@@ -164,11 +171,12 @@ shared(installer) persistent actor class ThePractice(
       case null { assert false };                   // user not found
     };
     audit(caller, "suspendUser", ?p);
+    #ok(())
   };
 
-  public shared ({ caller }) func unsuspendUser(p : Principal) : async () {
-    Auth.requireAuthenticated(caller);
-    requireRole(caller, #Partner);
+  public shared ({ caller }) func unsuspendUser(p : Principal) : async Result.Result<(), Text> {
+    switch (Auth.requireAuthenticated(caller)) { case (#err(e)) { return #err(e) }; case (#ok) {} };
+    switch (requireRole(caller, #Partner)) { case (#err(e)) { return #err(e) }; case (#ok) {} };
     switch (Map.get(users, Principal.compare, p)) {
       case (?record) {
         users := Map.add(users, Principal.compare, p, {
@@ -181,13 +189,15 @@ shared(installer) persistent actor class ThePractice(
       case null { assert false };                   // user not found
     };
     audit(caller, "unsuspendUser", ?p);
+    #ok(())
   };
 
-  public shared ({ caller }) func removeUser(p : Principal) : async () {
-    Auth.requireAuthenticated(caller);
-    requireRole(caller, #Partner);
+  public shared ({ caller }) func removeUser(p : Principal) : async Result.Result<(), Text> {
+    switch (Auth.requireAuthenticated(caller)) { case (#err(e)) { return #err(e) }; case (#ok) {} };
+    switch (requireRole(caller, #Partner)) { case (#err(e)) { return #err(e) }; case (#ok) {} };
     assert p != masterController;                   // cannot remove master controller (must transfer first)
     users := Map.remove(users, Principal.compare, p);
     audit(caller, "removeUser", ?p);
+    #ok(())
   };
 };

@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
-# L1 Identity smoke test — runs against the local replica.
-# Usage: ./scripts/smoke-l1.sh  (from project root)
+# L1 + L5 smoke test — runs against the local replica.
+# Usage: ./scripts/smoke.sh  (from project root)
 #
 # Uses --mode reinstall for a clean state on every run. Local test data only.
 set -euo pipefail
@@ -23,7 +23,7 @@ check() {
   fi
 }
 
-echo "=== L1 Identity Smoke Test ==="
+echo "=== L1 + L5 Smoke Test ==="
 echo ""
 
 # ── Identity setup ────────────────────────────────────────────────────────────
@@ -35,6 +35,7 @@ echo "Setup: creating plaintext test identities"
 icp identity new smoke-master    --storage plaintext -q 2>/dev/null 1>/dev/null || true
 icp identity new smoke-associate --storage plaintext -q 2>/dev/null 1>/dev/null || true
 icp identity new smoke-ops       --storage plaintext -q 2>/dev/null 1>/dev/null || true
+icp identity new smoke-staff     --storage plaintext -q 2>/dev/null 1>/dev/null || true
 
 # Restore original identity on exit (even on failure)
 restore() { icp identity default "$ORIGINAL_IDENTITY" 2>/dev/null || true; }
@@ -44,9 +45,11 @@ trap restore EXIT
 MASTER_PRINCIPAL=$(icp identity principal --identity smoke-master)
 ASSOCIATE_PRINCIPAL=$(icp identity principal --identity smoke-associate)
 OPS_PRINCIPAL=$(icp identity principal --identity smoke-ops)
+STAFF_PRINCIPAL=$(icp identity principal --identity smoke-staff)
 echo "  Master principal:    $MASTER_PRINCIPAL"
 echo "  Associate principal: $ASSOCIATE_PRINCIPAL"
 echo "  Ops principal:       $OPS_PRINCIPAL"
+echo "  Staff principal:     $STAFF_PRINCIPAL"
 echo ""
 
 # ── Step 1: Deploy ───────────────────────────────────────────────────────────
@@ -93,8 +96,8 @@ echo ""
 
 # ── Step 7: addUser ──────────────────────────────────────────────────────────
 echo "Step 7: addUser — register smoke-associate as Associate"
-icp canister call backend addUser "(principal \"$ASSOCIATE_PRINCIPAL\", variant { Associate })"
-echo "  addUser succeeded"
+RESULT=$(icp canister call backend addUser "(principal \"$ASSOCIATE_PRINCIPAL\", variant { Associate })")
+check "addUser returns ok" "ok" "$RESULT"
 RESULT=$(icp canister call backend getUserCount "()")
 check "getUserCount is 2 after addUser" "2" "$RESULT"
 echo ""
@@ -107,32 +110,32 @@ echo ""
 
 # ── Step 9: setUserRole ──────────────────────────────────────────────────────
 echo "Step 9: setUserRole — promote smoke-associate to Partner"
-icp canister call backend setUserRole "(principal \"$ASSOCIATE_PRINCIPAL\", variant { Partner })"
-echo "  setUserRole succeeded"
+RESULT=$(icp canister call backend setUserRole "(principal \"$ASSOCIATE_PRINCIPAL\", variant { Partner })")
+check "setUserRole returns ok" "ok" "$RESULT"
 RESULT=$(icp canister call backend getMyRole "()" --identity smoke-associate)
 check "user role updated to Partner" "Partner" "$RESULT"
 echo ""
 
 # ── Step 10: suspendUser ─────────────────────────────────────────────────────
 echo "Step 10: suspendUser — suspend smoke-associate"
-icp canister call backend suspendUser "(principal \"$ASSOCIATE_PRINCIPAL\")"
-echo "  suspendUser succeeded"
+RESULT=$(icp canister call backend suspendUser "(principal \"$ASSOCIATE_PRINCIPAL\")")
+check "suspendUser returns ok" "ok" "$RESULT"
 RESULT=$(icp canister call backend getMyRole "()" --identity smoke-associate)
 check "suspended user getMyRole returns null" "null" "$RESULT"
 echo ""
 
 # ── Step 11: grantOperations ─────────────────────────────────────────────────
 echo "Step 11: grantOperations — grant ops principal"
-icp canister call backend grantOperations "(principal \"$OPS_PRINCIPAL\")"
-echo "  grantOperations succeeded"
+RESULT=$(icp canister call backend grantOperations "(principal \"$OPS_PRINCIPAL\")")
+check "grantOperations returns ok" "ok" "$RESULT"
 RESULT=$(icp canister call backend getOperationsPrincipal "()")
 check "operationsPrincipal is set after grant" "$OPS_PRINCIPAL" "$RESULT"
 echo ""
 
 # ── Step 12: revokeOperations ────────────────────────────────────────────────
 echo "Step 12: revokeOperations — revoke ops"
-icp canister call backend revokeOperations "()"
-echo "  revokeOperations succeeded"
+RESULT=$(icp canister call backend revokeOperations "()")
+check "revokeOperations returns ok" "ok" "$RESULT"
 RESULT=$(icp canister call backend getOperationsPrincipal "()")
 check "operationsPrincipal is null after revoke" "null" "$RESULT"
 echo ""

@@ -8,22 +8,22 @@ type UserRecord =
 type Time = int;
 type ThePractice = 
  service {
-   addUser: (p: principal, role: Role) -> ();
+   addUser: (p: principal, role: Role) -> (Result);
    getMasterController: () -> (principal) query;
    getMyRole: () -> (opt Role) query;
    getOperationsPrincipal: () -> (opt principal) query;
    getUserCount: () -> (nat) query;
-   grantOperations: (p: principal) -> ();
+   grantOperations: (p: principal) -> (Result);
    listUsers: () -> (vec record {
                            principal;
                            UserRecord;
                          }) query;
-   removeUser: (p: principal) -> ();
-   revokeOperations: () -> ();
-   setUserRole: (p: principal, role: Role) -> ();
-   suspendUser: (p: principal) -> ();
-   transferMasterController: (p: principal) -> ();
-   unsuspendUser: (p: principal) -> ();
+   removeUser: (p: principal) -> (Result);
+   revokeOperations: () -> (Result);
+   setUserRole: (p: principal, role: Role) -> (Result);
+   suspendUser: (p: principal) -> (Result);
+   transferMasterController: (p: principal) -> (Result);
+   unsuspendUser: (p: principal) -> (Result);
    whoAmI: () -> (principal) query;
  };
 type Role = 
@@ -31,5 +31,10 @@ type Role =
    Associate;
    Partner;
    Staff;
+ };
+type Result = 
+ variant {
+   err: text;
+   ok;
  };
 service : (masterControllerArg: principal) -> ThePractice
