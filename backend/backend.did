@@ -18,6 +18,7 @@ type ThePractice =
                            principal;
                            UserRecord;
                          }) query;
+   readAuditEntries: (after: nat, limit: nat) -> (Result_1);
    removeUser: (p: principal) -> (Result);
    revokeOperations: () -> (Result);
    setUserRole: (p: principal, role: Role) -> (Result);
@@ -32,9 +33,28 @@ type Role =
    Partner;
    Staff;
  };
+type Result_1 = 
+ variant {
+   err: text;
+   ok: vec AuditEntry;
+ };
 type Result = 
  variant {
    err: text;
    ok;
+ };
+type AuditOutcome = 
+ variant {
+   err: text;
+   ok;
+ };
+type AuditEntry = 
+ record {
+   action: text;
+   caller: principal;
+   id: nat;
+   outcome: AuditOutcome;
+   target: opt principal;
+   timestamp: Time;
  };
 service : (masterControllerArg: principal) -> ThePractice

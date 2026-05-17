@@ -23,6 +23,21 @@ check() {
   fi
 }
 
+check_absent() {
+  local label="$1"
+  local absent="$2"
+  local actual="$3"
+  if echo "$actual" | grep -q "$absent"; then
+    echo "  FAIL: $label"
+    echo "        unexpectedly found: $absent"
+    echo "        in: $actual"
+    FAIL=$((FAIL + 1))
+  else
+    echo "  PASS: $label"
+    PASS=$((PASS + 1))
+  fi
+}
+
 echo "=== L1 + L5 Smoke Test ==="
 echo ""
 
@@ -95,7 +110,7 @@ check "getUserCount is 1 at install" "1" "$RESULT"
 echo ""
 
 # ── Step 7: addUser ──────────────────────────────────────────────────────────
-echo "Step 7: addUser — register smoke-associate as Associate"
+echo "Step 7: addUser — register smoke-associate as Associate (audit id=2)"
 RESULT=$(icp canister call backend addUser "(principal \"$ASSOCIATE_PRINCIPAL\", variant { Associate })")
 check "addUser returns ok" "ok" "$RESULT"
 RESULT=$(icp canister call backend getUserCount "()")
@@ -109,7 +124,7 @@ check "new user has Associate role" "Associate" "$RESULT"
 echo ""
 
 # ── Step 9: setUserRole ──────────────────────────────────────────────────────
-echo "Step 9: setUserRole — promote smoke-associate to Partner"
+echo "Step 9: setUserRole — promote smoke-associate to Partner (audit id=3)"
 RESULT=$(icp canister call backend setUserRole "(principal \"$ASSOCIATE_PRINCIPAL\", variant { Partner })")
 check "setUserRole returns ok" "ok" "$RESULT"
 RESULT=$(icp canister call backend getMyRole "()" --identity smoke-associate)
@@ -117,7 +132,7 @@ check "user role updated to Partner" "Partner" "$RESULT"
 echo ""
 
 # ── Step 10: suspendUser ─────────────────────────────────────────────────────
-echo "Step 10: suspendUser — suspend smoke-associate"
+echo "Step 10: suspendUser — suspend smoke-associate (audit id=4)"
 RESULT=$(icp canister call backend suspendUser "(principal \"$ASSOCIATE_PRINCIPAL\")")
 check "suspendUser returns ok" "ok" "$RESULT"
 RESULT=$(icp canister call backend getMyRole "()" --identity smoke-associate)
@@ -125,7 +140,7 @@ check "suspended user getMyRole returns null" "null" "$RESULT"
 echo ""
 
 # ── Step 11: grantOperations ─────────────────────────────────────────────────
-echo "Step 11: grantOperations — grant ops principal"
+echo "Step 11: grantOperations — grant ops principal (audit id=5)"
 RESULT=$(icp canister call backend grantOperations "(principal \"$OPS_PRINCIPAL\")")
 check "grantOperations returns ok" "ok" "$RESULT"
 RESULT=$(icp canister call backend getOperationsPrincipal "()")
@@ -133,11 +148,80 @@ check "operationsPrincipal is set after grant" "$OPS_PRINCIPAL" "$RESULT"
 echo ""
 
 # ── Step 12: revokeOperations ────────────────────────────────────────────────
-echo "Step 12: revokeOperations — revoke ops"
+echo "Step 12: revokeOperations — revoke ops (audit id=6)"
 RESULT=$(icp canister call backend revokeOperations "()")
 check "revokeOperations returns ok" "ok" "$RESULT"
 RESULT=$(icp canister call backend getOperationsPrincipal "()")
 check "operationsPrincipal is null after revoke" "null" "$RESULT"
+echo ""
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# L5 Audit log assertions
+# Audit log state at this point: ids 1–6 (install, addUser, setUserRole,
+# suspendUser, grantOperations, revokeOperations).
+# readAuditEntries emits its own entry BEFORE collecting results, so every call
+# to readAuditEntries appears as the last entry in its own returned page.
+# ═══════════════════════════════════════════════════════════════════════════════
+
+# ── Step 13: L5 — install event is audit id=1 ────────────────────────────────
+echo "Step 13: L5 — readAuditEntries(0, 10) should return install event as id=1"
+echo "  (also records itself as id=7; emit-before-collect, so id=7 appears in results)"
+RESULT=$(icp canister call backend readAuditEntries "(0 : nat, 10 : nat)")
+check "readAuditEntries returns ok" "ok" "$RESULT"
+check "install event present in audit log" "install" "$RESULT"
+check "grantOperations event present" "grantOperations" "$RESULT"
+check "addUser event present" "addUser" "$RESULT"
+echo ""
+
+# ── Step 14: L5 — unauthorized mutator call creates an #err audit entry ──────
+echo "Step 14: L5 — smoke-staff (unregistered) calls grantOperations; should return #err"
+echo "  and create audit entry with outcome = #err (audit id=8)"
+RESULT=$(icp canister call backend grantOperations "(principal \"$OPS_PRINCIPAL\")" --identity smoke-staff)
+check "unauthorized grantOperations returns err" "err" "$RESULT"
+echo ""
+
+# ── Step 15: L5 — confirm the #err entry was recorded ────────────────────────
+echo "Step 15: L5 — readAuditEntries(0, 100) as Partner; confirm #err entry is present"
+echo "  (records itself as id=9)"
+RESULT=$(icp canister call backend readAuditEntries "(0 : nat, 100 : nat)")
+check "audit log contains an err outcome" "err" "$RESULT"
+check "failed grantOperations appears in log" "grantOperations" "$RESULT"
+echo ""
+
+# ── Step 16: L5 — non-Partner readAuditEntries returns #err ──────────────────
+echo "Step 16: L5 — smoke-staff calls readAuditEntries; should return #err('not authorized')"
+echo "  and create audit entry with outcome = #err('not authorized') (audit id=10)"
+RESULT=$(icp canister call backend readAuditEntries "(0 : nat, 10 : nat)" --identity smoke-staff)
+check "non-Partner readAuditEntries returns err" "err" "$RESULT"
+check "error message is not authorized" "not authorized" "$RESULT"
+echo ""
+
+# ── Step 17: L5 — meta-trust property: readAuditEntries appears in its own results ──
+echo "Step 17: L5 — readAuditEntries(0, 1000) as Partner; last entry should be"
+echo "  readAuditEntries itself (proving the meta-trust property)"
+echo "  (records itself as id=11; emit-before-collect puts id=11 at end of results)"
+RESULT=$(icp canister call backend readAuditEntries "(0 : nat, 1000 : nat)")
+check "full read returns ok" "ok" "$RESULT"
+check "non-Partner read failure is in log" "not authorized" "$RESULT"
+check "readAuditEntries action appears in own results" "readAuditEntries" "$RESULT"
+echo ""
+
+# ── Step 18: L5 — cursor pagination: no gaps, no overlap ─────────────────────
+echo "Step 18: L5 — cursor pagination: readAuditEntries(0, 3) then readAuditEntries(3, 3)"
+echo "  Page 1 should contain the install event (id=1); page 2 should not."
+echo "  Page 2 should contain suspendUser (id=4); page 1 should not."
+
+echo "  Fetching page 1 (after=0, limit=3) — records itself as id=12, returns ids 1-3"
+PAGE1=$(icp canister call backend readAuditEntries "(0 : nat, 3 : nat)")
+check "page 1 returns ok" "ok" "$PAGE1"
+check "page 1 contains install event" "install" "$PAGE1"
+check_absent "page 1 does not contain suspendUser" "suspendUser" "$PAGE1"
+
+echo "  Fetching page 2 (after=3, limit=3) — records itself as id=13, returns ids 4-6"
+PAGE2=$(icp canister call backend readAuditEntries "(3 : nat, 3 : nat)")
+check "page 2 returns ok" "ok" "$PAGE2"
+check "page 2 contains suspendUser (id=4, no gap from cursor=3)" "suspendUser" "$PAGE2"
+check_absent "page 2 does not contain install (no overlap with page 1)" "install" "$PAGE2"
 echo ""
 
 # ── Summary ──────────────────────────────────────────────────────────────────
