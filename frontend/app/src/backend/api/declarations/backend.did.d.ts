@@ -10,6 +10,47 @@ import type { ActorMethod } from '@icp-sdk/core/agent';
 import type { IDL } from '@icp-sdk/core/candid';
 import type { Principal } from '@icp-sdk/core/principal';
 
-export interface _SERVICE { 'greet' : ActorMethod<[string], string> }
+export interface AuditEntry {
+  'id' : bigint,
+  'action' : string,
+  'target' : [] | [Principal],
+  'timestamp' : Time,
+  'caller' : Principal,
+  'outcome' : AuditOutcome,
+}
+export type AuditOutcome = { 'ok' : null } |
+  { 'err' : string };
+export type Result = { 'ok' : null } |
+  { 'err' : string };
+export type Result_1 = { 'ok' : Array<AuditEntry> } |
+  { 'err' : string };
+export type Role = { 'Staff' : null } |
+  { 'Associate' : null } |
+  { 'Partner' : null };
+export interface ThePractice {
+  'addUser' : ActorMethod<[Principal, Role], Result>,
+  'getMasterController' : ActorMethod<[], Principal>,
+  'getMyRole' : ActorMethod<[], [] | [Role]>,
+  'getOperationsPrincipal' : ActorMethod<[], [] | [Principal]>,
+  'getUserCount' : ActorMethod<[], bigint>,
+  'grantOperations' : ActorMethod<[Principal], Result>,
+  'listUsers' : ActorMethod<[], Array<[Principal, UserRecord]>>,
+  'readAuditEntries' : ActorMethod<[bigint, bigint], Result_1>,
+  'removeUser' : ActorMethod<[Principal], Result>,
+  'revokeOperations' : ActorMethod<[], Result>,
+  'setUserRole' : ActorMethod<[Principal, Role], Result>,
+  'suspendUser' : ActorMethod<[Principal], Result>,
+  'transferMasterController' : ActorMethod<[Principal], Result>,
+  'unsuspendUser' : ActorMethod<[Principal], Result>,
+  'whoAmI' : ActorMethod<[], Principal>,
+}
+export type Time = bigint;
+export interface UserRecord {
+  'role' : Role,
+  'addedAt' : Time,
+  'addedBy' : Principal,
+  'suspended' : boolean,
+}
+export interface _SERVICE extends ThePractice {}
 export declare const idlFactory: IDL.InterfaceFactory;
 export declare const init: (args: { IDL: typeof IDL }) => IDL.Type[];

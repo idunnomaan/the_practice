@@ -9,7 +9,59 @@
 import { IDL } from '@icp-sdk/core/candid';
 
 export const idlFactory = ({ IDL }) => {
-  return IDL.Service({ 'greet' : IDL.Func([IDL.Text], [IDL.Text], ['query']) });
+  const Role = IDL.Variant({
+    'Staff' : IDL.Null,
+    'Associate' : IDL.Null,
+    'Partner' : IDL.Null,
+  });
+  const Result = IDL.Variant({ 'ok' : IDL.Null, 'err' : IDL.Text });
+  const Time = IDL.Int;
+  const UserRecord = IDL.Record({
+    'role' : Role,
+    'addedAt' : Time,
+    'addedBy' : IDL.Principal,
+    'suspended' : IDL.Bool,
+  });
+  const AuditOutcome = IDL.Variant({ 'ok' : IDL.Null, 'err' : IDL.Text });
+  const AuditEntry = IDL.Record({
+    'id' : IDL.Nat,
+    'action' : IDL.Text,
+    'target' : IDL.Opt(IDL.Principal),
+    'timestamp' : Time,
+    'caller' : IDL.Principal,
+    'outcome' : AuditOutcome,
+  });
+  const Result_1 = IDL.Variant({
+    'ok' : IDL.Vec(AuditEntry),
+    'err' : IDL.Text,
+  });
+  const ThePractice = IDL.Service({
+    'addUser' : IDL.Func([IDL.Principal, Role], [Result], []),
+    'getMasterController' : IDL.Func([], [IDL.Principal], ['query']),
+    'getMyRole' : IDL.Func([], [IDL.Opt(Role)], ['query']),
+    'getOperationsPrincipal' : IDL.Func(
+        [],
+        [IDL.Opt(IDL.Principal)],
+        ['query'],
+      ),
+    'getUserCount' : IDL.Func([], [IDL.Nat], ['query']),
+    'grantOperations' : IDL.Func([IDL.Principal], [Result], []),
+    'listUsers' : IDL.Func(
+        [],
+        [IDL.Vec(IDL.Tuple(IDL.Principal, UserRecord))],
+        ['query'],
+      ),
+    'readAuditEntries' : IDL.Func([IDL.Nat, IDL.Nat], [Result_1], []),
+    'removeUser' : IDL.Func([IDL.Principal], [Result], []),
+    'revokeOperations' : IDL.Func([], [Result], []),
+    'setUserRole' : IDL.Func([IDL.Principal, Role], [Result], []),
+    'suspendUser' : IDL.Func([IDL.Principal], [Result], []),
+    'transferMasterController' : IDL.Func([IDL.Principal], [Result], []),
+    'unsuspendUser' : IDL.Func([IDL.Principal], [Result], []),
+    'whoAmI' : IDL.Func([], [IDL.Principal], ['query']),
+  });
+  
+  return ThePractice;
 };
 
-export const init = ({ IDL }) => { return []; };
+export const init = ({ IDL }) => { return [IDL.Principal]; };

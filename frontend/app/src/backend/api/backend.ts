@@ -51,15 +51,272 @@ function candid_none<T>(): [] {
 function record_opt_to_undefined<T>(arg: T | null): T | undefined {
     return arg == null ? undefined : arg;
 }
-export interface backendInterface {
-    greet(name: string): Promise<string>;
+export interface ThePracticeInterface {
+    addUser(p: Principal, role: Role): Promise<Result>;
+    getMasterController(): Promise<Principal>;
+    getMyRole(): Promise<Role | null>;
+    getOperationsPrincipal(): Promise<Principal | null>;
+    getUserCount(): Promise<bigint>;
+    grantOperations(p: Principal): Promise<Result>;
+    listUsers(): Promise<Array<[Principal, UserRecord]>>;
+    readAuditEntries(after: bigint, limit: bigint): Promise<Result_1>;
+    removeUser(p: Principal): Promise<Result>;
+    revokeOperations(): Promise<Result>;
+    setUserRole(p: Principal, role: Role): Promise<Result>;
+    suspendUser(p: Principal): Promise<Result>;
+    transferMasterController(p: Principal): Promise<Result>;
+    unsuspendUser(p: Principal): Promise<Result>;
+    whoAmI(): Promise<Principal>;
 }
+export type Time = bigint;
+export type AuditOutcome = {
+    __kind__: "ok";
+    ok: null;
+} | {
+    __kind__: "err";
+    err: string;
+};
+export type Result = {
+    __kind__: "ok";
+    ok: null;
+} | {
+    __kind__: "err";
+    err: string;
+};
+export interface AuditEntry {
+    id: bigint;
+    action: string;
+    target?: Principal;
+    timestamp: Time;
+    caller: Principal;
+    outcome: AuditOutcome;
+}
+export type Result_1 = {
+    __kind__: "ok";
+    ok: Array<AuditEntry>;
+} | {
+    __kind__: "err";
+    err: string;
+};
+export interface UserRecord {
+    role: Role;
+    addedAt: Time;
+    addedBy: Principal;
+    suspended: boolean;
+}
+export enum Role {
+    Staff = "Staff",
+    Associate = "Associate",
+    Partner = "Partner"
+}
+export interface backendInterface extends ThePracticeInterface {
+}
+import type { AuditEntry as _AuditEntry, AuditOutcome as _AuditOutcome, Result as _Result, Result_1 as _Result_1, Role as _Role, Time as _Time, UserRecord as _UserRecord } from "./declarations/backend.did";
 export class Backend implements backendInterface {
     constructor(private actor: ActorSubclass<_SERVICE>){}
-    async greet(arg0: string): Promise<string> {
-        const result = await this.actor.greet(arg0);
+    async addUser(arg0: Principal, arg1: Role): Promise<Result> {
+        const result = await this.actor.addUser(arg0, to_candid_Role_n1(arg1));
+        return from_candid_Result_n3(result);
+    }
+    async getMasterController(): Promise<Principal> {
+        const result = await this.actor.getMasterController();
         return result;
     }
+    async getMyRole(): Promise<Role | null> {
+        const result = await this.actor.getMyRole();
+        return from_candid_opt_n5(result);
+    }
+    async getOperationsPrincipal(): Promise<Principal | null> {
+        const result = await this.actor.getOperationsPrincipal();
+        return from_candid_opt_n8(result);
+    }
+    async getUserCount(): Promise<bigint> {
+        const result = await this.actor.getUserCount();
+        return result;
+    }
+    async grantOperations(arg0: Principal): Promise<Result> {
+        const result = await this.actor.grantOperations(arg0);
+        return from_candid_Result_n3(result);
+    }
+    async listUsers(): Promise<Array<[Principal, UserRecord]>> {
+        const result = await this.actor.listUsers();
+        return from_candid_vec_n9(result);
+    }
+    async readAuditEntries(arg0: bigint, arg1: bigint): Promise<Result_1> {
+        const result = await this.actor.readAuditEntries(arg0, arg1);
+        return from_candid_Result_1_n13(result);
+    }
+    async removeUser(arg0: Principal): Promise<Result> {
+        const result = await this.actor.removeUser(arg0);
+        return from_candid_Result_n3(result);
+    }
+    async revokeOperations(): Promise<Result> {
+        const result = await this.actor.revokeOperations();
+        return from_candid_Result_n3(result);
+    }
+    async setUserRole(arg0: Principal, arg1: Role): Promise<Result> {
+        const result = await this.actor.setUserRole(arg0, to_candid_Role_n1(arg1));
+        return from_candid_Result_n3(result);
+    }
+    async suspendUser(arg0: Principal): Promise<Result> {
+        const result = await this.actor.suspendUser(arg0);
+        return from_candid_Result_n3(result);
+    }
+    async transferMasterController(arg0: Principal): Promise<Result> {
+        const result = await this.actor.transferMasterController(arg0);
+        return from_candid_Result_n3(result);
+    }
+    async unsuspendUser(arg0: Principal): Promise<Result> {
+        const result = await this.actor.unsuspendUser(arg0);
+        return from_candid_Result_n3(result);
+    }
+    async whoAmI(): Promise<Principal> {
+        const result = await this.actor.whoAmI();
+        return result;
+    }
+}
+function from_candid_AuditEntry_n16(value: _AuditEntry): AuditEntry {
+    return from_candid_record_n17(value);
+}
+function from_candid_AuditOutcome_n18(value: _AuditOutcome): AuditOutcome {
+    return from_candid_variant_n4(value);
+}
+function from_candid_Result_1_n13(value: _Result_1): Result_1 {
+    return from_candid_variant_n14(value);
+}
+function from_candid_Result_n3(value: _Result): Result {
+    return from_candid_variant_n4(value);
+}
+function from_candid_Role_n6(value: _Role): Role {
+    return from_candid_variant_n7(value);
+}
+function from_candid_UserRecord_n11(value: _UserRecord): UserRecord {
+    return from_candid_record_n12(value);
+}
+function from_candid_opt_n5(value: [] | [_Role]): Role | null {
+    return value.length === 0 ? null : from_candid_Role_n6(value[0]);
+}
+function from_candid_opt_n8(value: [] | [Principal]): Principal | null {
+    return value.length === 0 ? null : value[0];
+}
+function from_candid_record_n12(value: {
+    role: _Role;
+    addedAt: _Time;
+    addedBy: Principal;
+    suspended: boolean;
+}): {
+    role: Role;
+    addedAt: Time;
+    addedBy: Principal;
+    suspended: boolean;
+} {
+    return {
+        role: from_candid_Role_n6(value.role),
+        addedAt: value.addedAt,
+        addedBy: value.addedBy,
+        suspended: value.suspended
+    };
+}
+function from_candid_record_n17(value: {
+    id: bigint;
+    action: string;
+    target: [] | [Principal];
+    timestamp: _Time;
+    caller: Principal;
+    outcome: _AuditOutcome;
+}): {
+    id: bigint;
+    action: string;
+    target?: Principal;
+    timestamp: Time;
+    caller: Principal;
+    outcome: AuditOutcome;
+} {
+    return {
+        id: value.id,
+        action: value.action,
+        target: record_opt_to_undefined(from_candid_opt_n8(value.target)),
+        timestamp: value.timestamp,
+        caller: value.caller,
+        outcome: from_candid_AuditOutcome_n18(value.outcome)
+    };
+}
+function from_candid_tuple_n10(value: [Principal, _UserRecord]): [Principal, UserRecord] {
+    return [
+        value[0],
+        from_candid_UserRecord_n11(value[1])
+    ];
+}
+function from_candid_variant_n14(value: {
+    ok: Array<_AuditEntry>;
+} | {
+    err: string;
+}): {
+    __kind__: "ok";
+    ok: Array<AuditEntry>;
+} | {
+    __kind__: "err";
+    err: string;
+} {
+    return "ok" in value ? {
+        __kind__: "ok",
+        ok: from_candid_vec_n15(value.ok)
+    } : "err" in value ? {
+        __kind__: "err",
+        err: value.err
+    } : value;
+}
+function from_candid_variant_n4(value: {
+    ok: null;
+} | {
+    err: string;
+}): {
+    __kind__: "ok";
+    ok: null;
+} | {
+    __kind__: "err";
+    err: string;
+} {
+    return "ok" in value ? {
+        __kind__: "ok",
+        ok: value.ok
+    } : "err" in value ? {
+        __kind__: "err",
+        err: value.err
+    } : value;
+}
+function from_candid_variant_n7(value: {
+    Staff: null;
+} | {
+    Associate: null;
+} | {
+    Partner: null;
+}): Role {
+    return "Staff" in value ? Role.Staff : "Associate" in value ? Role.Associate : "Partner" in value ? Role.Partner : value;
+}
+function from_candid_vec_n15(value: Array<_AuditEntry>): Array<AuditEntry> {
+    return value.map((x)=>from_candid_AuditEntry_n16(x));
+}
+function from_candid_vec_n9(value: Array<[Principal, _UserRecord]>): Array<[Principal, UserRecord]> {
+    return value.map((x)=>from_candid_tuple_n10(x));
+}
+function to_candid_Role_n1(value: Role): _Role {
+    return to_candid_variant_n2(value);
+}
+function to_candid_variant_n2(value: Role): {
+    Staff: null;
+} | {
+    Associate: null;
+} | {
+    Partner: null;
+} {
+    return value == Role.Staff ? {
+        Staff: null
+    } : value == Role.Associate ? {
+        Associate: null
+    } : value == Role.Partner ? {
+        Partner: null
+    } : value;
 }
 export interface CreateActorOptions {
     agent?: Agent;

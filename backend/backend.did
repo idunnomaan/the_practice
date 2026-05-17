@@ -9,22 +9,50 @@ type Time = int;
 type ThePractice = 
  service {
    addUser: (p: principal, role: Role) -> (Result);
+   archiveMatter: (id: nat) -> (Result);
+   assignPartnerToMatter: (id: nat, partner: opt principal) -> (Result);
+   closeMatter: (id: nat) -> (Result);
+   createClient: (name: text, clientType: ClientType, primaryEmail: opt text,
+    primaryPhone: opt text, identifier: opt text, notes: text) -> (Result_2);
+   createMatter: (title: text, matterType: text, clientId: nat,
+    assignedPartner: opt principal, description: text) -> (Result_2);
+   deactivateClient: (id: nat) -> (Result);
+   getClient: (id: nat) -> (opt Client) query;
+   getClientCount: () -> (nat) query;
    getMasterController: () -> (principal) query;
+   getMatter: (id: nat) -> (opt Matter) query;
+   getMatterCount: () -> (nat) query;
    getMyRole: () -> (opt Role) query;
    getOperationsPrincipal: () -> (opt principal) query;
    getUserCount: () -> (nat) query;
    grantOperations: (p: principal) -> (Result);
+   listClients: (after: nat, limit: nat, includeInactive: bool) ->
+    (vec Client) query;
+   listMatters: (after: nat, limit: nat, statusFilter: opt MatterStatus) ->
+    (vec Matter) query;
+   listMattersByClient: (clientId: nat, after: nat, limit: nat, statusFilter:
+    opt MatterStatus) -> (vec Matter) query;
    listUsers: () -> (vec record {
                            principal;
                            UserRecord;
                          }) query;
+   putMatterOnHold: (id: nat) -> (Result);
+   reactivateClient: (id: nat) -> (Result);
    readAuditEntries: (after: nat, limit: nat) -> (Result_1);
    removeUser: (p: principal) -> (Result);
+   reopenMatter: (id: nat) -> (Result);
+   resumeMatter: (id: nat) -> (Result);
    revokeOperations: () -> (Result);
    setUserRole: (p: principal, role: Role) -> (Result);
    suspendUser: (p: principal) -> (Result);
    transferMasterController: (p: principal) -> (Result);
    unsuspendUser: (p: principal) -> (Result);
+   updateClient: (id: nat, name: opt text, clientType: opt ClientType,
+    primaryEmail: opt text, primaryPhone: opt text, identifier: opt text,
+    notes: opt text) -> (Result);
+   updateMatter: (id: nat, title: opt text, matterType: opt text, clientId:
+    opt nat, assignedPartner: opt opt principal, description: opt text) ->
+    (Result);
    whoAmI: () -> (principal) query;
  };
 type Role = 
@@ -32,6 +60,11 @@ type Role =
    Associate;
    Partner;
    Staff;
+ };
+type Result_2 = 
+ variant {
+   err: text;
+   ok: nat;
  };
 type Result_1 = 
  variant {
@@ -42,6 +75,55 @@ type Result =
  variant {
    err: text;
    ok;
+ };
+type MatterStatus = 
+ variant {
+   Archived;
+   Closed;
+   OnHold;
+   Open;
+ };
+type Matter = 
+ record {
+   assignedPartner: opt principal;
+   clientId: nat;
+   closedAt: opt Time;
+   createdAt: Time;
+   createdBy: principal;
+   description: text;
+   id: nat;
+   lastModifiedAt: Time;
+   lastModifiedBy: principal;
+   matterType: text;
+   openedAt: Time;
+   status: MatterStatus;
+   title: text;
+ };
+type ClientType = 
+ variant {
+   Company;
+   Individual;
+   Other;
+ };
+type ClientStatus = 
+ variant {
+   Active;
+   Inactive;
+ };
+type Client = 
+ record {
+   clientType: ClientType;
+   createdAt: Time;
+   createdBy: principal;
+   id: nat;
+   identifier: opt text;
+   lastModifiedAt: Time;
+   lastModifiedBy: principal;
+   name: text;
+   notes: text;
+   primaryEmail: opt text;
+   primaryPhone: opt text;
+   status: ClientStatus;
  };
 type AuditOutcome = 
  variant {

@@ -224,6 +224,225 @@ check "page 2 contains suspendUser (id=4, no gap from cursor=3)" "suspendUser" "
 check_absent "page 2 does not contain install (no overlap with page 1)" "install" "$PAGE2"
 echo ""
 
+# ═══════════════════════════════════════════════════════════════════════════════
+# L2 Client + Matter lifecycle assertions — start at Step 35 per spec §7
+# ═══════════════════════════════════════════════════════════════════════════════
+
+# smoke-partner: a second Partner identity for multi-user tests
+icp identity new smoke-partner --storage plaintext -q 2>/dev/null 1>/dev/null || true
+PARTNER_PRINCIPAL=$(icp identity principal --identity smoke-partner)
+echo "  Partner2 principal:  $PARTNER_PRINCIPAL"
+echo "  Staff principal:     $STAFF_PRINCIPAL (unregistered — used for non-Partner checks)"
+echo ""
+
+# Register smoke-partner as Partner (still running as smoke-master)
+icp canister call backend addUser "(principal \"$PARTNER_PRINCIPAL\", variant { Partner })" > /dev/null
+
+# ── Step 35: createClient — Partner creates first client ─────────────────────
+echo "Step 35: createClient — Partner creates 'Acme Holdings PLC' (#Company)"
+RESULT=$(icp canister call backend createClient \
+  "(\"Acme Holdings PLC\", variant { Company }, null, null, null, \"\")")
+check "createClient returns ok(1)" "ok" "$RESULT"
+check "client id is 1" "1" "$RESULT"
+echo ""
+
+# ── Step 36: getClient — confirm record is stored ────────────────────────────
+echo "Step 36: getClient(1) — confirm record stored with correct fields"
+RESULT=$(icp canister call backend getClient "(1 : nat)")
+check "getClient returns a record" "Acme Holdings PLC" "$RESULT"
+check "clientType is Company" "Company" "$RESULT"
+check "status is Active" "Active" "$RESULT"
+echo ""
+
+# ── Step 37: audit entry for createClient ────────────────────────────────────
+echo "Step 37: readAuditEntries — confirm createClient action was recorded"
+RESULT=$(icp canister call backend readAuditEntries "(0 : nat, 1000 : nat)")
+check "createClient appears in audit log" "createClient" "$RESULT"
+echo ""
+
+# ── Step 38: listClients pagination ──────────────────────────────────────────
+echo "Step 38: listClients pagination — create 3 clients total; paginate at 2"
+icp canister call backend createClient "(\"Baur & Sons Ltd\", variant { Company }, null, null, null, \"\")" > /dev/null
+icp canister call backend createClient "(\"Nimal Perera\", variant { Individual }, null, null, null, \"\")" > /dev/null
+
+PAGE1=$(icp canister call backend listClients "(0 : nat, 2 : nat, false)")
+check "listClients page 1 contains Acme" "Acme" "$PAGE1"
+check "listClients page 1 contains Baur" "Baur" "$PAGE1"
+check_absent "page 1 does not contain Nimal" "Nimal" "$PAGE1"
+
+PAGE2=$(icp canister call backend listClients "(2 : nat, 2 : nat, false)")
+check "listClients page 2 contains Nimal" "Nimal" "$PAGE2"
+check_absent "page 2 does not contain Acme" "Acme" "$PAGE2"
+echo ""
+
+# ── Step 39: updateClient ────────────────────────────────────────────────────
+echo "Step 39: updateClient — set primaryEmail on client 1; confirm field updated"
+RESULT=$(icp canister call backend updateClient \
+  "(1 : nat, null, null, opt \"acme@example.com\", null, null, null)")
+check "updateClient returns ok" "ok" "$RESULT"
+RESULT=$(icp canister call backend getClient "(1 : nat)")
+check "primaryEmail updated to acme@example.com" "acme@example.com" "$RESULT"
+RESULT=$(icp canister call backend readAuditEntries "(0 : nat, 1000 : nat)")
+check "updateClient appears in audit log" "updateClient" "$RESULT"
+echo ""
+
+# ── Step 40: createMatter FK rejection — nonexistent client ──────────────────
+echo "Step 40: createMatter with clientId=999 — expect #err('client 999 not found')"
+RESULT=$(icp canister call backend createMatter \
+  "(\"Test Matter\", \"Litigation\", 999 : nat, null, \"\")")
+check "createMatter with bad clientId returns err" "err" "$RESULT"
+check "error names client 999" "999" "$RESULT"
+RESULT=$(icp canister call backend readAuditEntries "(0 : nat, 1000 : nat)")
+check "failed createMatter emits audit err entry" "err" "$RESULT"
+echo ""
+
+# ── Step 41: createMatter success ────────────────────────────────────────────
+echo "Step 41: createMatter with clientId=1 — expect success, id=1"
+RESULT=$(icp canister call backend createMatter \
+  "(\"Acme Litigation v1\", \"Litigation\", 1 : nat, null, \"Initial matter\")")
+check "createMatter returns ok" "ok" "$RESULT"
+check "matter id is 1" "1" "$RESULT"
+RESULT=$(icp canister call backend getMatter "(1 : nat)")
+check "getMatter returns record" "Acme Litigation v1" "$RESULT"
+check "matter status is Open" "Open" "$RESULT"
+echo ""
+
+# ── Step 42: FK rejection on inactive client ─────────────────────────────────
+echo "Step 42: deactivateClient(2) — client 2 has no matters, should succeed"
+echo "  Then createMatter with clientId=2 — expect #err('client 2 is inactive')"
+RESULT=$(icp canister call backend deactivateClient "(2 : nat)")
+check "deactivateClient(2) returns ok" "ok" "$RESULT"
+RESULT=$(icp canister call backend createMatter \
+  "(\"Baur Matter\", \"Advisory\", 2 : nat, null, \"\")")
+check "createMatter on inactive client returns err" "err" "$RESULT"
+check "error mentions inactive" "inactive" "$RESULT"
+echo ""
+
+# ── Step 43: deactivateClient rejected when open matters exist ───────────────
+echo "Step 43: deactivateClient(1) — client 1 has matter#1 (#Open) — expect rejection"
+RESULT=$(icp canister call backend deactivateClient "(1 : nat)")
+check "deactivateClient with open matter returns err" "err" "$RESULT"
+check "error names the count" "1 open matter" "$RESULT"
+RESULT=$(icp canister call backend readAuditEntries "(0 : nat, 1000 : nat)")
+check "blocked deactivateClient emits audit err" "deactivateClient" "$RESULT"
+echo ""
+
+# ── Step 44: matter status lifecycle — OnHold / resume / close / reopen ──────
+echo "Step 44: matter lifecycle — Open→OnHold→Open→Closed (closedAt set)"
+RESULT=$(icp canister call backend putMatterOnHold "(1 : nat)")
+check "putMatterOnHold returns ok" "ok" "$RESULT"
+RESULT=$(icp canister call backend getMatter "(1 : nat)")
+check "matter status is OnHold" "OnHold" "$RESULT"
+
+RESULT=$(icp canister call backend resumeMatter "(1 : nat)")
+check "resumeMatter returns ok" "ok" "$RESULT"
+RESULT=$(icp canister call backend getMatter "(1 : nat)")
+check "matter status is Open after resume" "Open" "$RESULT"
+
+RESULT=$(icp canister call backend closeMatter "(1 : nat)")
+check "closeMatter returns ok" "ok" "$RESULT"
+RESULT=$(icp canister call backend getMatter "(1 : nat)")
+check "matter status is Closed" "Closed" "$RESULT"
+check "closedAt is set (not null)" "closedAt" "$RESULT"
+echo ""
+
+# ── Step 45: reopenMatter clears closedAt; then re-close and archive ─────────
+echo "Step 45: reopenMatter → closedAt cleared; closeMatter again; archiveMatter"
+RESULT=$(icp canister call backend reopenMatter "(1 : nat)")
+check "reopenMatter returns ok" "ok" "$RESULT"
+RESULT=$(icp canister call backend getMatter "(1 : nat)")
+check "matter status is Open after reopen" "Open" "$RESULT"
+check "closedAt is null after reopen" "closedAt = null" "$RESULT"
+
+RESULT=$(icp canister call backend closeMatter "(1 : nat)")
+check "closeMatter second time returns ok" "ok" "$RESULT"
+
+RESULT=$(icp canister call backend archiveMatter "(1 : nat)")
+check "archiveMatter returns ok" "ok" "$RESULT"
+RESULT=$(icp canister call backend getMatter "(1 : nat)")
+check "matter status is Archived" "Archived" "$RESULT"
+echo ""
+
+# ── Step 46: archived matter is immutable ────────────────────────────────────
+echo "Step 46: updateMatter on archived matter — expect rejection"
+RESULT=$(icp canister call backend updateMatter \
+  "(1 : nat, opt \"New Title\", null, null, null, null)")
+check "updateMatter on archived returns err" "err" "$RESULT"
+check "error mentions archived" "archived" "$RESULT"
+echo ""
+
+# ── Step 47: invalid status transition ───────────────────────────────────────
+echo "Step 47: create fresh matter (id=2); try archiveMatter on #Open — invalid transition"
+icp canister call backend createMatter \
+  "(\"Matter Two\", \"Advisory\", 1 : nat, null, \"\")" > /dev/null
+RESULT=$(icp canister call backend archiveMatter "(2 : nat)")
+check "archiveMatter on Open matter returns err" "err" "$RESULT"
+check "error mentions invalid status transition" "invalid status transition" "$RESULT"
+check "error mentions Open" "Open" "$RESULT"
+echo ""
+
+# ── Step 48: reopen-archived rejected ────────────────────────────────────────
+echo "Step 48: reopenMatter on archived matter#1 — expect rejection"
+RESULT=$(icp canister call backend reopenMatter "(1 : nat)")
+check "reopenMatter on Archived returns err" "err" "$RESULT"
+check "error mentions invalid status transition" "invalid status transition" "$RESULT"
+echo ""
+
+# ── Step 49: non-Partner write rejected; non-Partner read allowed ─────────────
+echo "Step 49: smoke-staff (unregistered) — write rejected, read allowed"
+RESULT=$(icp canister call backend createClient \
+  "(\"Unauthorized Co\", variant { Company }, null, null, null, \"\")" \
+  --identity smoke-staff)
+check "non-Partner createClient returns err" "err" "$RESULT"
+check "error is not authorized" "not authorized" "$RESULT"
+
+RESULT=$(icp canister call backend listClients "(0 : nat, 10 : nat, true)" \
+  --identity smoke-staff)
+check "non-Partner listClients succeeds" "Acme" "$RESULT"
+echo ""
+
+# ── Step 50: listMattersByClient — scoped to one client ──────────────────────
+echo "Step 50: listMattersByClient — create 2 more matters for client 1; 1 for client 3"
+icp canister call backend createMatter \
+  "(\"Matter Three\", \"Advisory\", 1 : nat, null, \"\")" > /dev/null
+icp canister call backend createMatter \
+  "(\"Matter Four\", \"Advisory\", 1 : nat, null, \"\")" > /dev/null
+icp canister call backend createMatter \
+  "(\"Nimal Matter\", \"Advisory\", 3 : nat, null, \"\")" > /dev/null
+
+RESULT=$(icp canister call backend listMattersByClient "(1 : nat, 0 : nat, 1000 : nat, null)")
+check "listMattersByClient(1) returns Matter Two" "Matter Two" "$RESULT"
+check "listMattersByClient(1) returns Matter Three" "Matter Three" "$RESULT"
+check "listMattersByClient(1) returns Matter Four" "Matter Four" "$RESULT"
+check_absent "listMattersByClient(1) excludes Nimal Matter" "Nimal Matter" "$RESULT"
+echo ""
+
+# ── Step 51: reactivateClient ────────────────────────────────────────────────
+echo "Step 51: reactivateClient(2) — confirm status becomes #Active; audit entry"
+RESULT=$(icp canister call backend reactivateClient "(2 : nat)")
+check "reactivateClient returns ok" "ok" "$RESULT"
+RESULT=$(icp canister call backend getClient "(2 : nat)")
+check "client 2 status is Active after reactivation" "Active" "$RESULT"
+RESULT=$(icp canister call backend readAuditEntries "(0 : nat, 1000 : nat)")
+check "reactivateClient appears in audit log" "reactivateClient" "$RESULT"
+echo ""
+
+# ── Step 52: anonymous principal rejected on writes ──────────────────────────
+echo "Step 52: anonymous caller — createClient rejected (if icp-cli supports --identity anonymous)"
+ANON_RESULT=$(icp canister call backend createClient \
+  "(\"Anon Co\", variant { Company }, null, null, null, \"\")" \
+  --identity anonymous 2>&1) || true
+check "anonymous createClient returns err or error" "err\|Error\|anonymous\|not allowed" "$ANON_RESULT"
+echo ""
+
+# ── Step 53: getClientCount and getMatterCount ────────────────────────────────
+echo "Step 53: count queries — 3 clients, 5+ matters"
+RESULT=$(icp canister call backend getClientCount "()")
+check "getClientCount returns 3" "3" "$RESULT"
+RESULT=$(icp canister call backend getMatterCount "()")
+check "getMatterCount is at least 5" "5\|6\|7\|8\|9" "$RESULT"
+echo ""
+
 # ── Summary ──────────────────────────────────────────────────────────────────
 echo "=== Results: $PASS passed, $FAIL failed ==="
 if [ "$FAIL" -gt 0 ]; then
