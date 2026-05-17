@@ -134,7 +134,17 @@ Commands verified against `icp-cli` SKILL.md (2026-04-14) and the local scaffold
 
 Verify latest at https://github.com/dfinity/icp-cli-recipes/releases.
 
-**Mops toolchain:** pinned at `moc = "1.3.0"` in `backend/mops.toml`. Do not change without checking compatibility.
+**Mops dependencies (locked during L1 implementation):**
+- `mo:core` = **`2.3.1`** (motoko skill is current authority; older canister-security skill says 2.0.0 — ignore that)
+- `moc` = **`1.3.0`** in `backend/mops.toml`. Motoko skill recommends `1.7.0` — bump if a future skill pattern is incompatible, but L1 verified clean with 1.3.0 + core 2.3.1.
+
+**Candid regeneration is NOT automatic.** The `@dfinity/motoko` recipe uses an existing `backend/backend.did` as-is and does NOT regenerate it from Motoko source after interface changes (icp-cli skill pitfall #16). `scripts/deploy-local.sh` runs the regen before every deploy:
+
+```bash
+(cd backend && $(mops toolchain bin moc) --idl $(mops sources) -o backend.did src/main.mo)
+```
+
+After ANY change to Motoko interfaces (new public functions, type changes), run `deploy-local.sh` so `backend.did` updates. Frontend TypeScript bindings derive from `backend.did` — stale `.did` = stale bindings = silent frontend breakage.
 
 **Identity:**
 - Default anonymous identity is auto-seeded with ICP and cycles on the local network — fine for First Build.
