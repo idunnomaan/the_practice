@@ -1,8 +1,9 @@
 {
   "version": 3,
-  "mopsTomlDepsHash": "57d3dd9b72387223ab6e7b4d1b0d7dc82de9cf5a98da27dbecb9710c37063b34",
+  "mopsTomlDepsHash": "b586a557a968ff1c3e499be03bd9a453be8376585052e8530419dbcf20553750",
   "deps": {
-    "core": "2.3.1"
+    "core": "2.3.1",
+    "sha2": "0.1.14"
   },
   "hashes": {
     "core@2.3.1": {
@@ -61,6 +62,14 @@
       "core@2.3.1/src/internal/PRNG.mo": "8a93e87baa2b12f613c82394a4a05b425e44a695bbace4ca36f9a1f78be26442",
       "core@2.3.1/src/pure/List.mo": "b4fb45cf75410461fb1501a316d2384d1be63fee1fccf11ed1d29677e5e2393c",
       "core@2.3.1/src/pure/RealTimeQueue.mo": "af133ae61c69ce4e00db5e9db53ddeccad84373fef82a156c85360c2426349dd"
+    },
+    "sha2@0.1.14": {
+      "sha2@0.1.14/mops.toml": "ba73b13715683357925fb004b66e43a0f3fabb5fdce3028f13d12d4a297b3170",
+      "sha2@0.1.14/README.md": "f06ce7acdfabd793202505e744591c6692b54eeb97f97689bc889fd1926a1de0",
+      "sha2@0.1.14/src/Sha512.mo": "8b9f809dd637e4490ca7c33a0c6911e4ab853a3c69a8b54304567ff502068559",
+      "sha2@0.1.14/LICENSE": "0351aa17e901e2f426698e6199237119a18c8ea1674877e0eb4d694ee9c4b938",
+      "sha2@0.1.14/NOTICE": "2a2979e2cb91a7d903c3377ed8031a92e7fd467fd9ddb005f2ae2042ead1b4f1",
+      "sha2@0.1.14/src/Sha256.mo": "d7c858eb1c097e9336ace80e754fb45b3c7b8e11884bebce3a228af5b4494c26"
     }
   }
 }

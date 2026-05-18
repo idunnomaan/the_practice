@@ -6,11 +6,16 @@ import Text "mo:core/Text";
 import Time "mo:core/Time";
 import Iter "mo:core/Iter";
 import Result "mo:core/Result";
+import Array "mo:core/Array";
+import Blob "mo:core/Blob";
+import VarArray "mo:core/VarArray";
+import Sha256 "mo:sha2/Sha256";
 import Types "./Types";
 import Auth "./Auth";
 import Audit "./Audit";
 import ClientModule "./Client";
 import MatterModule "./Matter";
+import DocumentModule "./Document";
 
 shared(installer) persistent actor class ThePractice(
   masterControllerArg : Principal
@@ -25,6 +30,10 @@ shared(installer) persistent actor class ThePractice(
   type ClientStatus = ClientModule.ClientStatus;
   type Matter = MatterModule.Matter;
   type MatterStatus = MatterModule.MatterStatus;
+  type Document = DocumentModule.Document;
+  type DocumentStatus = DocumentModule.DocumentStatus;
+  type DocumentVersion = DocumentModule.DocumentVersion;
+  type UploadSession = DocumentModule.UploadSession;
 
   // INV-1: anonymous principal cannot hold any identity — trap at install if anonymous
   assert not Principal.isAnonymous(masterControllerArg);
@@ -54,6 +63,18 @@ shared(installer) persistent actor class ThePractice(
   // SEC-INV-8: monotonic IDs; strictly increment by 1 per successful create
   var nextClientId : Nat = 1;
   var nextMatterId : Nat = 1;
+
+  // L2b state — `let` bindings (MutMap mutates in-place; binding never reassigned)
+  let documents = MutMap.empty<Nat, Document>();
+  let documentVersions = MutMap.empty<Nat, DocumentVersion>();
+  let versionsByDocument = MutMap.empty<Nat, [Nat]>(); // docId → ordered list of versionIds
+  let uploadSessions = MutMap.empty<Nat, UploadSession>();
+  // SEC-INV-9: monotonic IDs, independent counters
+  var nextDocumentId : Nat = 1;
+  var nextVersionId : Nat = 1;
+  var nextSessionId : Nat = 1;
+  var totalStorageUsedBytes : Nat = 0;
+  var storageBudgetBytes : Nat = DocumentModule.DEFAULT_STORAGE_BUDGET;
 
   // ── Audit helpers ─────────────────────────────────────────────────────────
   // SEC-INV-1: auditOk and auditErr are the only write paths into auditLog (append-only).
@@ -135,6 +156,54 @@ shared(installer) persistent actor class ThePractice(
         #ok(())
       };
     };
+  };
+
+  // ── L2b private helpers ───────────────────────────────────────────────────
+
+  // For UPLOADS: matter must exist and not be #Archived (SEC-INV-5)
+  func lookupMatterActive(matterId : Nat) : Result.Result<Matter, Text> {
+    switch (MutMap.get(matters, Nat.compare, matterId)) {
+      case null { #err("matter " # Nat.toText(matterId) # " not found") };
+      case (?m) {
+        if (m.status == #Archived) #err("matter " # Nat.toText(matterId) # " is archived")
+        else #ok(m)
+      };
+    };
+  };
+
+  // SEC-INV-12: document must exist and be #Active
+  func lookupDocumentActive(docId : Nat) : Result.Result<Document, Text> {
+    switch (MutMap.get(documents, Nat.compare, docId)) {
+      case null { #err("document " # Nat.toText(docId) # " not found") };
+      case (?doc) {
+        if (doc.status == #Deleted) #err("document " # Nat.toText(docId) # " is deleted")
+        else #ok(doc)
+      };
+    };
+  };
+
+  // SHA-256: sha2@0.1.14 used — mo:core 2.3.1 has no crypto module
+  func computeSha256(data : Blob) : Blob {
+    Sha256.fromBlob(#sha256, data)
+  };
+
+  // Appends versionId to versionsByDocument[docId]; initialises list if absent
+  func appendVersionToDocument(docId : Nat, versionId : Nat) : () {
+    let existing : [Nat] = switch (MutMap.get(versionsByDocument, Nat.compare, docId)) {
+      case null [];
+      case (?arr) arr;
+    };
+    MutMap.add(versionsByDocument, Nat.compare, docId, Array.concat<Nat>(existing, [versionId]));
+  };
+
+  // setStorageBudget is callable by master controller OR operations principal
+  func requireOperationsOrMaster(caller : Principal) : Result.Result<(), Text> {
+    if (caller == masterController) return #ok(());
+    switch (operationsPrincipal) {
+      case (?ops) { if (caller == ops) return #ok(()) };
+      case null {};
+    };
+    #err("not authorized")
   };
 
   // ── Init ─────────────────────────────────────────────────────────────────
@@ -232,6 +301,107 @@ shared(installer) persistent actor class ThePractice(
   public query ({ caller }) func getMatterCount() : async Nat {
     switch (Auth.requireAuthenticated(caller)) { case (#err(_)) assert false; case (#ok) {} };
     MutMap.size(matters)
+  };
+
+  // ── L2b Queries ───────────────────────────────────────────────────────────
+  // SEC-INV-1: trap on anonymous (queries cannot audit; trap is correct).
+  // SEC-INV-13: no canister_inspect_message boundary.
+
+  public query ({ caller }) func getDocument(id : Nat) : async ?Document {
+    switch (Auth.requireAuthenticated(caller)) { case (#err(_)) assert false; case (#ok) {} };
+    MutMap.get(documents, Nat.compare, id)
+  };
+
+  public query ({ caller }) func listDocumentsByMatter(
+    matterId : Nat,
+    after : Nat,
+    limit : Nat,
+    includeDeleted : Bool
+  ) : async [Document] {
+    switch (Auth.requireAuthenticated(caller)) { case (#err(_)) assert false; case (#ok) {} };
+    let cap = if (limit > 1000) 1000 else limit;
+    let base = MutMap.entriesFrom(documents, Nat.compare, after + 1);
+    let filtered = Iter.filter(base, func((_, d) : (Nat, Document)) : Bool {
+      if (d.matterId != matterId) return false;
+      includeDeleted or d.status != #Deleted
+    });
+    let taken = Iter.take(filtered, cap);
+    Iter.toArray(Iter.map(taken, func((_, d) : (Nat, Document)) : Document { d }))
+  };
+
+  // Returns full version including blob — for inspection only. Use prepareDocumentDownload + getChunk for downloads.
+  public query ({ caller }) func getDocumentVersion(versionId : Nat) : async ?DocumentVersion {
+    switch (Auth.requireAuthenticated(caller)) { case (#err(_)) assert false; case (#ok) {} };
+    MutMap.get(documentVersions, Nat.compare, versionId)
+  };
+
+  // Returns all versions for a document. Blob fields are stripped to empty Blob to keep the query cheap;
+  // actual bytes are retrieved via getChunk.
+  public query ({ caller }) func listVersions(documentId : Nat) : async [DocumentVersion] {
+    switch (Auth.requireAuthenticated(caller)) { case (#err(_)) assert false; case (#ok) {} };
+    let vids : [Nat] = switch (MutMap.get(versionsByDocument, Nat.compare, documentId)) {
+      case null [];
+      case (?arr) arr;
+    };
+    Array.filterMap<Nat, DocumentVersion>(vids, func(vid) {
+      switch (MutMap.get(documentVersions, Nat.compare, vid)) {
+        case null null;
+        case (?v) ?{ v with blob = "" }; // blob stripped — use getChunk for bytes
+      };
+    })
+  };
+
+  public query ({ caller }) func getDocumentCount() : async Nat {
+    switch (Auth.requireAuthenticated(caller)) { case (#err(_)) assert false; case (#ok) {} };
+    MutMap.size(documents)
+  };
+
+  public query ({ caller }) func getStorageUsed() : async Nat {
+    switch (Auth.requireAuthenticated(caller)) { case (#err(_)) assert false; case (#ok) {} };
+    totalStorageUsedBytes
+  };
+
+  public query ({ caller }) func getStorageBudget() : async Nat {
+    switch (Auth.requireAuthenticated(caller)) { case (#err(_)) assert false; case (#ok) {} };
+    storageBudgetBytes
+  };
+
+  // Q7: chunk reads are not audited per chunk — one audit entry per prepareDocumentDownload intent only.
+  // SEC-INV-1: anonymous rejected; SEC-INV-2: role >= Staff required (trap on failure — query, can't audit).
+  // SEC-INV-12: #Deleted documents not accessible — returns null.
+  // SEC-INV-13: no canister_inspect_message boundary.
+  public query ({ caller }) func getChunk(versionId : Nat, chunkIndex : Nat) : async ?Blob {
+    switch (Auth.requireAuthenticated(caller)) { case (#err(_)) assert false; case (#ok) {} };
+    switch (requireRole(caller, #Staff)) { case (#err(_)) assert false; case (#ok) {} };
+    switch (MutMap.get(documentVersions, Nat.compare, versionId)) {
+      case null null;
+      case (?version) {
+        switch (MutMap.get(documents, Nat.compare, version.documentId)) {
+          case null null;
+          case (?doc) {
+            // SEC-INV-12: #Deleted documents not retrievable
+            if (doc.status != #Active) return null;
+            let count = DocumentModule.expectedChunkCount(version.sizeBytes);
+            if (chunkIndex >= count) return null;
+            let (startByte, endByte) = DocumentModule.chunkRange(chunkIndex, version.sizeBytes);
+            // On-demand slice: iterate blob bytes without materialising full [Nat8] array
+            let chunkSize = endByte - startByte;
+            let result = VarArray.repeat<Nat8>(0, chunkSize);
+            var bytePos : Nat = 0;
+            var writePos : Nat = 0;
+            label sliceLoop for (b in version.blob.values()) {
+              if (bytePos >= endByte) break sliceLoop;
+              if (bytePos >= startByte) {
+                result[writePos] := b;
+                writePos += 1;
+              };
+              bytePos += 1;
+            };
+            ?Blob.fromVarArray(result)
+          };
+        };
+      };
+    };
   };
 
   // ── Updates ──────────────────────────────────────────────────────────────
@@ -913,6 +1083,430 @@ shared(installer) persistent actor class ThePractice(
       };
     };
     auditOk(caller, "assignPartnerToMatter", null);
+    #ok(())
+  };
+
+  // ── L2b Upload updates ────────────────────────────────────────────────────
+  // SEC-INV-1: anonymous rejected; SEC-INV-2: role >= Associate.
+  // SEC-INV-11: every method emits exactly one audit entry.
+
+  public shared ({ caller }) func startUpload(
+    matterId : Nat,
+    filename : Text,
+    contentType : Text,
+    totalSizeBytes : Nat,
+    uploadNotes : Text,
+    replacesDocumentId : ?Nat
+  ) : async Result.Result<Nat, Text> {
+    // SEC-INV-1
+    switch (Auth.requireAuthenticated(caller)) {
+      case (#err(e)) { auditErr(caller, "startUpload", null, e); return #err(e) };
+      case (#ok) {};
+    };
+    // SEC-INV-2: Associate or higher
+    switch (requireRole(caller, #Associate)) {
+      case (#err(e)) { auditErr(caller, "startUpload", null, e); return #err(e) };
+      case (#ok) {};
+    };
+    // SEC-INV-7: file size limit (also reject 0-byte files)
+    if (totalSizeBytes == 0) {
+      let e = "totalSizeBytes must be > 0";
+      auditErr(caller, "startUpload", null, e);
+      return #err(e);
+    };
+    if (totalSizeBytes > DocumentModule.MAX_FILE_SIZE) {
+      let e = "file too large: " # Nat.toText(totalSizeBytes) # " bytes exceeds limit of " # Nat.toText(DocumentModule.MAX_FILE_SIZE);
+      auditErr(caller, "startUpload", null, e);
+      return #err(e);
+    };
+    // SEC-INV-6: content type whitelist enforced at startUpload
+    if (not DocumentModule.isAllowedContentType(contentType)) {
+      let e = "content type not allowed: " # contentType;
+      auditErr(caller, "startUpload", null, e);
+      return #err(e);
+    };
+    // SEC-INV-8: storage budget enforced at startUpload
+    if (totalStorageUsedBytes + totalSizeBytes > storageBudgetBytes) {
+      let available = if (storageBudgetBytes >= totalStorageUsedBytes) storageBudgetBytes - totalStorageUsedBytes else 0;
+      let e = "storage budget exceeded: would need " # Nat.toText(totalSizeBytes) # " bytes, only " # Nat.toText(available) # " available";
+      auditErr(caller, "startUpload", null, e);
+      return #err(e);
+    };
+    // SEC-INV-5: FK — matter must exist and not be #Archived
+    switch (lookupMatterActive(matterId)) {
+      case (#err(e)) { auditErr(caller, "startUpload", null, e); return #err(e) };
+      case (#ok(_)) {};
+    };
+    // SEC-INV-5: replacesDocumentId FK validation
+    switch (replacesDocumentId) {
+      case null {};
+      case (?replaceId) {
+        switch (lookupDocumentActive(replaceId)) {
+          case (#err(e)) { auditErr(caller, "startUpload", null, e); return #err(e) };
+          case (#ok(doc)) {
+            if (doc.matterId != matterId) {
+              let e = "document " # Nat.toText(replaceId) # " does not belong to matter " # Nat.toText(matterId);
+              auditErr(caller, "startUpload", null, e);
+              return #err(e);
+            };
+          };
+        };
+      };
+    };
+    // SEC-INV-9: monotonic session ID
+    let sessionId = nextSessionId;
+    nextSessionId += 1;
+    MutMap.add(uploadSessions, Nat.compare, sessionId, {
+      sessionId;
+      matterId;
+      filename;
+      contentType;
+      totalSizeBytes;
+      expectedChunkCount = DocumentModule.expectedChunkCount(totalSizeBytes);
+      uploadNotes;
+      replacesDocumentId;
+      chunks = Map.empty<Nat, Blob>();  // pure Map — updated by replacing session record
+      startedAt = Time.now();
+      startedBy = caller; // SEC-INV-3: caller-locked
+    });
+    auditOk(caller, "startUpload", null);
+    #ok(sessionId)
+  };
+
+  public shared ({ caller }) func appendChunk(
+    sessionId : Nat,
+    chunkIndex : Nat,
+    chunkBytes : Blob
+  ) : async Result.Result<(), Text> {
+    // SEC-INV-1
+    switch (Auth.requireAuthenticated(caller)) {
+      case (#err(e)) { auditErr(caller, "appendChunk", null, e); return #err(e) };
+      case (#ok) {};
+    };
+    // SEC-INV-2
+    switch (requireRole(caller, #Associate)) {
+      case (#err(e)) { auditErr(caller, "appendChunk", null, e); return #err(e) };
+      case (#ok) {};
+    };
+    let session = switch (MutMap.get(uploadSessions, Nat.compare, sessionId)) {
+      case null {
+        let e = "session " # Nat.toText(sessionId) # " not found";
+        auditErr(caller, "appendChunk", null, e);
+        return #err(e);
+      };
+      case (?s) s;
+    };
+    // SEC-INV-3: caller-lock
+    if (session.startedBy != caller) {
+      let e = "not the session owner";
+      auditErr(caller, "appendChunk", null, e);
+      return #err(e);
+    };
+    if (chunkIndex >= session.expectedChunkCount) {
+      let e = "chunk index " # Nat.toText(chunkIndex) # " out of range (expected " # Nat.toText(session.expectedChunkCount) # " chunks)";
+      auditErr(caller, "appendChunk", null, e);
+      return #err(e);
+    };
+    // Validate chunk size: non-last chunks must be exactly CHUNK_SIZE
+    let isLastChunk = chunkIndex == session.expectedChunkCount - 1;
+    let expectedSize = if (isLastChunk) {
+      session.totalSizeBytes - chunkIndex * DocumentModule.CHUNK_SIZE
+    } else {
+      DocumentModule.CHUNK_SIZE
+    };
+    if (chunkBytes.size() != expectedSize) {
+      let e = "chunk " # Nat.toText(chunkIndex) # " wrong size: expected " # Nat.toText(expectedSize) # ", got " # Nat.toText(chunkBytes.size());
+      auditErr(caller, "appendChunk", null, e);
+      return #err(e);
+    };
+    // Idempotent: last write wins for the same chunkIndex
+    let newChunks = Map.add(session.chunks, Nat.compare, chunkIndex, chunkBytes);
+    MutMap.add(uploadSessions, Nat.compare, sessionId, { session with chunks = newChunks });
+    auditOk(caller, "appendChunk", null);
+    #ok(())
+  };
+
+  public shared ({ caller }) func finalizeUpload(
+    sessionId : Nat
+  ) : async Result.Result<{ documentId : Nat; versionId : Nat; sha256 : Blob }, Text> {
+    // SEC-INV-1
+    switch (Auth.requireAuthenticated(caller)) {
+      case (#err(e)) { auditErr(caller, "documentUpload:0", null, e); return #err(e) };
+      case (#ok) {};
+    };
+    // SEC-INV-2
+    switch (requireRole(caller, #Associate)) {
+      case (#err(e)) { auditErr(caller, "documentUpload:0", null, e); return #err(e) };
+      case (#ok) {};
+    };
+    let session = switch (MutMap.get(uploadSessions, Nat.compare, sessionId)) {
+      case null {
+        let e = "session " # Nat.toText(sessionId) # " not found";
+        auditErr(caller, "documentUpload:0", null, e);
+        return #err(e);
+      };
+      case (?s) s;
+    };
+    // SEC-INV-3: caller-lock
+    if (session.startedBy != caller) {
+      let e = "not the session owner";
+      auditErr(caller, "documentUpload:0", null, e);
+      return #err(e);
+    };
+    // Validate chunk completeness: size check then index-by-index verification
+    if (Map.size(session.chunks) != session.expectedChunkCount) {
+      let e = "upload incomplete: expected " # Nat.toText(session.expectedChunkCount) # " chunks, have " # Nat.toText(Map.size(session.chunks));
+      auditErr(caller, "documentUpload:0", null, e);
+      return #err(e);
+    };
+    var ci : Nat = 0;
+    while (ci < session.expectedChunkCount) {
+      if (Map.get(session.chunks, Nat.compare, ci) == null) {
+        let e = "upload incomplete: missing chunk " # Nat.toText(ci);
+        auditErr(caller, "documentUpload:0", null, e);
+        return #err(e);
+      };
+      ci += 1;
+    };
+    // Assemble blob: concatenate chunks 0..N-1 in order using blob iterator (memory-efficient)
+    let assembled = VarArray.repeat<Nat8>(0, session.totalSizeBytes);
+    var writePos : Nat = 0;
+    ci := 0;
+    while (ci < session.expectedChunkCount) {
+      switch (Map.get(session.chunks, Nat.compare, ci)) {
+        case (?chunk) {
+          for (b in chunk.values()) {
+            assembled[writePos] := b;
+            writePos += 1;
+          };
+        };
+        case null {};
+      };
+      ci += 1;
+    };
+    let assembledBlob = Blob.fromVarArray(assembled);
+    // Validate assembled size matches declared totalSizeBytes
+    if (assembledBlob.size() != session.totalSizeBytes) {
+      let e = "assembled size mismatch: expected " # Nat.toText(session.totalSizeBytes) # ", got " # Nat.toText(assembledBlob.size());
+      auditErr(caller, "documentUpload:0", null, e);
+      return #err(e);
+    };
+    let sha256 = computeSha256(assembledBlob);
+    let now = Time.now();
+    // Create document and/or version; re-validate FK on the replace path
+    let (documentId, versionId) : (Nat, Nat) = switch (session.replacesDocumentId) {
+      case null {
+        // New document + v1 version
+        let docId = nextDocumentId;
+        let verId = nextVersionId;
+        nextDocumentId += 1; // SEC-INV-9: monotonic
+        nextVersionId += 1;
+        MutMap.add(documentVersions, Nat.compare, verId, {
+          versionId = verId;
+          documentId = docId;
+          versionNumber = 1;
+          filename = session.filename;
+          contentType = session.contentType;
+          sizeBytes = session.totalSizeBytes;
+          blob = assembledBlob;
+          sha256;
+          uploadedAt = now;
+          uploadedBy = caller;
+          uploadNotes = session.uploadNotes;
+        });
+        MutMap.add(documents, Nat.compare, docId, {
+          id = docId;
+          matterId = session.matterId;
+          currentVersionId = verId;
+          status = #Active;
+          createdAt = now;
+          createdBy = caller;
+        });
+        appendVersionToDocument(docId, verId);
+        (docId, verId)
+      };
+      case (?replaceId) {
+        // Re-validate: doc still exists/active/in this matter; matter not archived mid-upload (SEC-INV-5)
+        let doc = switch (lookupDocumentActive(replaceId)) {
+          case (#err(e)) { auditErr(caller, "documentUpload:0", null, e); return #err(e) };
+          case (#ok(d)) d;
+        };
+        if (doc.matterId != session.matterId) {
+          let e = "document " # Nat.toText(replaceId) # " does not belong to this matter";
+          auditErr(caller, "documentUpload:0", null, e);
+          return #err(e);
+        };
+        switch (lookupMatterActive(session.matterId)) {
+          case (#err(e)) { auditErr(caller, "documentUpload:0", null, e); return #err(e) };
+          case (#ok(_)) {};
+        };
+        let versionNumber = switch (MutMap.get(versionsByDocument, Nat.compare, replaceId)) {
+          case null 2;
+          case (?arr) arr.size() + 1;
+        };
+        let verId = nextVersionId;
+        nextVersionId += 1; // SEC-INV-9: monotonic
+        MutMap.add(documentVersions, Nat.compare, verId, {
+          versionId = verId;
+          documentId = replaceId;
+          versionNumber;
+          filename = session.filename;
+          contentType = session.contentType;
+          sizeBytes = session.totalSizeBytes;
+          blob = assembledBlob;
+          sha256;
+          uploadedAt = now;
+          uploadedBy = caller;
+          uploadNotes = session.uploadNotes;
+        });
+        MutMap.add(documents, Nat.compare, replaceId, { doc with currentVersionId = verId });
+        appendVersionToDocument(replaceId, verId);
+        (replaceId, verId)
+      };
+    };
+    // Increment storage counter (never decremented — soft-delete keeps bytes)
+    totalStorageUsedBytes += session.totalSizeBytes;
+    // Delete session; no partial upload state persists after finalize
+    MutMap.remove(uploadSessions, Nat.compare, sessionId);
+    // SEC-INV-11: exactly one audit entry per mutator
+    auditOk(caller, "documentUpload:" # Nat.toText(documentId), null);
+    #ok({ documentId; versionId; sha256 })
+  };
+
+  public shared ({ caller }) func abandonUpload(sessionId : Nat) : async Result.Result<(), Text> {
+    // SEC-INV-1
+    switch (Auth.requireAuthenticated(caller)) {
+      case (#err(e)) { auditErr(caller, "abandonUpload", null, e); return #err(e) };
+      case (#ok) {};
+    };
+    // SEC-INV-2
+    switch (requireRole(caller, #Associate)) {
+      case (#err(e)) { auditErr(caller, "abandonUpload", null, e); return #err(e) };
+      case (#ok) {};
+    };
+    let session = switch (MutMap.get(uploadSessions, Nat.compare, sessionId)) {
+      case null {
+        let e = "session " # Nat.toText(sessionId) # " not found";
+        auditErr(caller, "abandonUpload", null, e);
+        return #err(e);
+      };
+      case (?s) s;
+    };
+    // SEC-INV-3: caller-lock
+    if (session.startedBy != caller) {
+      let e = "not the session owner";
+      auditErr(caller, "abandonUpload", null, e);
+      return #err(e);
+    };
+    MutMap.remove(uploadSessions, Nat.compare, sessionId);
+    auditOk(caller, "abandonUpload", null);
+    #ok(())
+  };
+
+  // ── L2b Document lifecycle ────────────────────────────────────────────────
+  // SEC-INV-4: no public method hard-deletes a Document or DocumentVersion.
+
+  public shared ({ caller }) func deleteDocument(documentId : Nat) : async Result.Result<(), Text> {
+    // SEC-INV-1
+    switch (Auth.requireAuthenticated(caller)) {
+      case (#err(e)) { auditErr(caller, "documentDelete:" # Nat.toText(documentId), null, e); return #err(e) };
+      case (#ok) {};
+    };
+    // SEC-INV-2: Partner only for delete
+    switch (requireRole(caller, #Partner)) {
+      case (#err(e)) { auditErr(caller, "documentDelete:" # Nat.toText(documentId), null, e); return #err(e) };
+      case (#ok) {};
+    };
+    switch (lookupDocumentActive(documentId)) {
+      case (#err(e)) { auditErr(caller, "documentDelete:" # Nat.toText(documentId), null, e); return #err(e) };
+      case (#ok(doc)) {
+        // SEC-INV-4: soft-delete only; bytes remain and count against budget
+        MutMap.add(documents, Nat.compare, documentId, { doc with status = #Deleted });
+      };
+    };
+    auditOk(caller, "documentDelete:" # Nat.toText(documentId), null);
+    #ok(())
+  };
+
+  // ── L2b Download flow ─────────────────────────────────────────────────────
+  // UPDATE (not query) — must emit audit entry (SEC-INV-11).
+  // Q7: chunk bytes flow via getChunk query (fast, not per-chunk-audited).
+
+  public shared ({ caller }) func prepareDocumentDownload(
+    versionId : Nat
+  ) : async Result.Result<{ documentId : Nat; sizeBytes : Nat; chunkCount : Nat; sha256 : Blob; contentType : Text; filename : Text }, Text> {
+    // SEC-INV-1
+    switch (Auth.requireAuthenticated(caller)) {
+      case (#err(e)) { auditErr(caller, "documentDownload:0", null, e); return #err(e) };
+      case (#ok) {};
+    };
+    // SEC-INV-2: Staff or higher
+    switch (requireRole(caller, #Staff)) {
+      case (#err(e)) { auditErr(caller, "documentDownload:0", null, e); return #err(e) };
+      case (#ok) {};
+    };
+    let version = switch (MutMap.get(documentVersions, Nat.compare, versionId)) {
+      case null {
+        let e = "version " # Nat.toText(versionId) # " not found";
+        auditErr(caller, "documentDownload:0", null, e);
+        return #err(e);
+      };
+      case (?v) v;
+    };
+    // SEC-INV-12: parent document must be #Active
+    let doc = switch (MutMap.get(documents, Nat.compare, version.documentId)) {
+      case null {
+        let e = "document " # Nat.toText(version.documentId) # " not found";
+        auditErr(caller, "documentDownload:" # Nat.toText(version.documentId), null, e);
+        return #err(e);
+      };
+      case (?d) d;
+    };
+    if (doc.status != #Active) {
+      let e = "document " # Nat.toText(doc.id) # " is not active";
+      auditErr(caller, "documentDownload:" # Nat.toText(doc.id), null, e);
+      return #err(e);
+    };
+    // For downloads: matter only needs to exist — any status including #Archived is readable
+    switch (MutMap.get(matters, Nat.compare, doc.matterId)) {
+      case null {
+        let e = "matter " # Nat.toText(doc.matterId) # " not found";
+        auditErr(caller, "documentDownload:" # Nat.toText(doc.id), null, e);
+        return #err(e);
+      };
+      case (?_) {};
+    };
+    // SEC-INV-11: exactly one audit entry; action encodes documentId (target field has no Nat slot)
+    auditOk(caller, "documentDownload:" # Nat.toText(doc.id), null);
+    #ok({
+      documentId = doc.id;
+      sizeBytes = version.sizeBytes;
+      chunkCount = DocumentModule.expectedChunkCount(version.sizeBytes);
+      sha256 = version.sha256;
+      contentType = version.contentType;
+      filename = version.filename;
+    })
+  };
+
+  // ── L2b Admin ─────────────────────────────────────────────────────────────
+
+  public shared ({ caller }) func setStorageBudget(newBudgetBytes : Nat) : async Result.Result<(), Text> {
+    // SEC-INV-1
+    switch (Auth.requireAuthenticated(caller)) {
+      case (#err(e)) { auditErr(caller, "setStorageBudget", null, e); return #err(e) };
+      case (#ok) {};
+    };
+    switch (requireOperationsOrMaster(caller)) {
+      case (#err(e)) { auditErr(caller, "setStorageBudget", null, e); return #err(e) };
+      case (#ok) {};
+    };
+    if (newBudgetBytes < totalStorageUsedBytes) {
+      let e = "budget cannot be below current usage (" # Nat.toText(totalStorageUsedBytes) # " bytes used)";
+      auditErr(caller, "setStorageBudget", null, e);
+      return #err(e);
+    };
+    storageBudgetBytes := newBudgetBytes;
+    auditOk(caller, "setStorageBudget", null);
     #ok(())
   };
 

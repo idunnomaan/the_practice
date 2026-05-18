@@ -8,26 +8,39 @@ type UserRecord =
 type Time = int;
 type ThePractice = 
  service {
+   abandonUpload: (sessionId: nat) -> (Result);
    addUser: (p: principal, role: Role) -> (Result);
+   appendChunk: (sessionId: nat, chunkIndex: nat, chunkBytes: blob) ->
+    (Result);
    archiveMatter: (id: nat) -> (Result);
    assignPartnerToMatter: (id: nat, partner: opt principal) -> (Result);
    closeMatter: (id: nat) -> (Result);
    createClient: (name: text, clientType: ClientType, primaryEmail: opt text,
-    primaryPhone: opt text, identifier: opt text, notes: text) -> (Result_2);
+    primaryPhone: opt text, identifier: opt text, notes: text) -> (Result_1);
    createMatter: (title: text, matterType: text, clientId: nat,
-    assignedPartner: opt principal, description: text) -> (Result_2);
+    assignedPartner: opt principal, description: text) -> (Result_1);
    deactivateClient: (id: nat) -> (Result);
+   deleteDocument: (documentId: nat) -> (Result);
+   finalizeUpload: (sessionId: nat) -> (Result_4);
+   getChunk: (versionId: nat, chunkIndex: nat) -> (opt blob) query;
    getClient: (id: nat) -> (opt Client) query;
    getClientCount: () -> (nat) query;
+   getDocument: (id: nat) -> (opt Document) query;
+   getDocumentCount: () -> (nat) query;
+   getDocumentVersion: (versionId: nat) -> (opt DocumentVersion) query;
    getMasterController: () -> (principal) query;
    getMatter: (id: nat) -> (opt Matter) query;
    getMatterCount: () -> (nat) query;
    getMyRole: () -> (opt Role) query;
    getOperationsPrincipal: () -> (opt principal) query;
+   getStorageBudget: () -> (nat) query;
+   getStorageUsed: () -> (nat) query;
    getUserCount: () -> (nat) query;
    grantOperations: (p: principal) -> (Result);
    listClients: (after: nat, limit: nat, includeInactive: bool) ->
     (vec Client) query;
+   listDocumentsByMatter: (matterId: nat, after: nat, limit: nat,
+    includeDeleted: bool) -> (vec Document) query;
    listMatters: (after: nat, limit: nat, statusFilter: opt MatterStatus) ->
     (vec Matter) query;
    listMattersByClient: (clientId: nat, after: nat, limit: nat, statusFilter:
@@ -36,14 +49,20 @@ type ThePractice =
                            principal;
                            UserRecord;
                          }) query;
+   listVersions: (documentId: nat) -> (vec DocumentVersion) query;
+   prepareDocumentDownload: (versionId: nat) -> (Result_3);
    putMatterOnHold: (id: nat) -> (Result);
    reactivateClient: (id: nat) -> (Result);
-   readAuditEntries: (after: nat, limit: nat) -> (Result_1);
+   readAuditEntries: (after: nat, limit: nat) -> (Result_2);
    removeUser: (p: principal) -> (Result);
    reopenMatter: (id: nat) -> (Result);
    resumeMatter: (id: nat) -> (Result);
    revokeOperations: () -> (Result);
+   setStorageBudget: (newBudgetBytes: nat) -> (Result);
    setUserRole: (p: principal, role: Role) -> (Result);
+   startUpload: (matterId: nat, filename: text, contentType: text,
+    totalSizeBytes: nat, uploadNotes: text, replacesDocumentId: opt nat) ->
+    (Result_1);
    suspendUser: (p: principal) -> (Result);
    transferMasterController: (p: principal) -> (Result);
    unsuspendUser: (p: principal) -> (Result);
@@ -61,15 +80,37 @@ type Role =
    Partner;
    Staff;
  };
+type Result_4 = 
+ variant {
+   err: text;
+   ok: record {
+         documentId: nat;
+         sha256: blob;
+         versionId: nat;
+       };
+ };
+type Result_3 = 
+ variant {
+   err: text;
+   ok:
+    record {
+      chunkCount: nat;
+      contentType: text;
+      documentId: nat;
+      filename: text;
+      sha256: blob;
+      sizeBytes: nat;
+    };
+ };
 type Result_2 = 
  variant {
    err: text;
-   ok: nat;
+   ok: vec AuditEntry;
  };
 type Result_1 = 
  variant {
    err: text;
-   ok: vec AuditEntry;
+   ok: nat;
  };
 type Result = 
  variant {
@@ -98,6 +139,34 @@ type Matter =
    openedAt: Time;
    status: MatterStatus;
    title: text;
+ };
+type DocumentVersion = 
+ record {
+   "blob": blob;
+   contentType: text;
+   documentId: nat;
+   filename: text;
+   sha256: blob;
+   sizeBytes: nat;
+   uploadNotes: text;
+   uploadedAt: Time;
+   uploadedBy: principal;
+   versionId: nat;
+   versionNumber: nat;
+ };
+type DocumentStatus = 
+ variant {
+   Active;
+   Deleted;
+ };
+type Document = 
+ record {
+   createdAt: Time;
+   createdBy: principal;
+   currentVersionId: nat;
+   id: nat;
+   matterId: nat;
+   status: DocumentStatus;
  };
 type ClientType = 
  variant {

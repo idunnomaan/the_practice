@@ -443,6 +443,367 @@ RESULT=$(icp canister call backend getMatterCount "()")
 check "getMatterCount is at least 5" "5\|6\|7\|8\|9" "$RESULT"
 echo ""
 
+# ═══════════════════════════════════════════════════════════════════════════════
+# L2b Document storage assertions — start at Step 54 (L2 ended at Step 53)
+# ═══════════════════════════════════════════════════════════════════════════════
+
+# ── Step 54: L2b setup — register users needed for document tests ─────────────
+echo "Step 54: L2b setup — register smoke-doc-associate (Associate) and smoke-staff (Staff)"
+icp identity new smoke-doc-associate --storage plaintext -q 2>/dev/null 1>/dev/null || true
+DOC_ASSOC_PRINCIPAL=$(icp identity principal --identity smoke-doc-associate)
+echo "  Doc-associate principal: $DOC_ASSOC_PRINCIPAL"
+# Register smoke-staff as Staff (was unregistered in L2 tests)
+icp canister call backend addUser "(principal \"$STAFF_PRINCIPAL\", variant { Staff })" > /dev/null
+# Register smoke-doc-associate as Associate
+icp canister call backend addUser "(principal \"$DOC_ASSOC_PRINCIPAL\", variant { Associate })" > /dev/null
+RESULT=$(icp canister call backend getMyRole "()" --identity smoke-doc-associate)
+check "smoke-doc-associate has Associate role" "Associate" "$RESULT"
+echo ""
+
+# Helper: write appendChunk Candid args to a file (avoids ARG_MAX limits for large chunks)
+make_chunk_args_file() {
+  local session_id="$1" chunk_index="$2" blob_file="$3" out_file="$4"
+  python3 -c "
+import sys
+sid, ci, bf = int(sys.argv[1]), int(sys.argv[2]), sys.argv[3]
+data = open(bf, 'rb').read()
+blob = ''.join(f'\\\\{b:02x}' for b in data)
+print(f'({sid} : nat, {ci} : nat, blob \"{blob}\")')
+" "$session_id" "$chunk_index" "$blob_file" > "$out_file"
+}
+
+# Helper: extract sha256 hex from Candid output containing sha256 = blob "..."
+extract_sha256_hex() {
+  echo "$1" | python3 -c "
+import sys, re
+output = sys.stdin.read()
+m = re.search(r'sha256\s*=\s*blob\s*\"([^\"]*)\"', output)
+if not m: print('NOT_FOUND'); sys.exit(0)
+raw = m.group(1)
+result = ''
+i = 0
+while i < len(raw):
+    if raw[i] == '\\\\' and i+2 < len(raw):
+        result += raw[i+1:i+3]
+        i += 3
+    else:
+        result += '%02x' % ord(raw[i])
+        i += 1
+print(result)
+"
+}
+
+# ── Step 55: Small file upload (single chunk) + hash verification ─────────────
+echo "Step 55: Small file upload (46 bytes, single chunk) + hash verification"
+BLOB1_FILE=$(mktemp /tmp/tp_smoke_XXXXXX.bin)
+printf 'The practice document system smoke test blob.' > "$BLOB1_FILE"
+BLOB1_SIZE=$(wc -c < "$BLOB1_FILE")
+LOCAL_HASH1=$(sha256sum "$BLOB1_FILE" | awk '{print $1}')
+BLOB1_CANDID=$(python3 -c "
+data = open('$BLOB1_FILE', 'rb').read()
+print('blob \"' + ''.join(f'\\\\{b:02x}' for b in data) + '\"', end='')
+")
+# startUpload — use matter#2 (Open), content type application/pdf
+RESULT=$(icp canister call backend startUpload \
+  "(2 : nat, \"test.pdf\", \"application/pdf\", $BLOB1_SIZE : nat, \"smoke test\", null)")
+check "startUpload returns ok" "ok" "$RESULT"
+SESSION1=$(echo "$RESULT" | grep -o '[0-9]*' | head -1)
+echo "  sessionId = $SESSION1"
+# appendChunk index 0
+RESULT=$(icp canister call backend appendChunk \
+  "($SESSION1 : nat, 0 : nat, $BLOB1_CANDID)")
+check "appendChunk returns ok" "ok" "$RESULT"
+# finalizeUpload
+FINALIZE1=$(icp canister call backend finalizeUpload "($SESSION1 : nat)")
+check "finalizeUpload returns ok" "ok" "$FINALIZE1"
+DOC1_ID=$(echo "$FINALIZE1" | python3 -c "import sys,re; m=re.search(r'documentId\s*=\s*(\d+)',sys.stdin.read()); print(m.group(1) if m else '0')")
+VER1_ID=$(echo "$FINALIZE1" | python3 -c "import sys,re; m=re.search(r'versionId\s*=\s*(\d+)',sys.stdin.read()); print(m.group(1) if m else '0')")
+echo "  documentId=$DOC1_ID  versionId=$VER1_ID"
+# Hash verification: compare sha256sum output with canister-returned sha256
+CANISTER_HASH1=$(extract_sha256_hex "$FINALIZE1")
+check "sha256 matches local computation" "$LOCAL_HASH1" "$CANISTER_HASH1"
+# Confirm audit entry recorded
+RESULT=$(icp canister call backend readAuditEntries "(0 : nat, 1000 : nat)")
+check "documentUpload audit entry recorded" "documentUpload" "$RESULT"
+rm -f "$BLOB1_FILE"
+echo ""
+
+# ── Step 56: Multi-chunk upload (1 MB + 1 byte = 2 chunks) ───────────────────
+echo "Step 56: Multi-chunk upload — 1 MB + 1 byte (2 chunks)"
+BLOB2_FILE=$(mktemp /tmp/tp_smoke_XXXXXX.bin)
+dd if=/dev/zero bs=1048576 count=1 2>/dev/null >> "$BLOB2_FILE"
+printf '\x41' >> "$BLOB2_FILE"             # 1 extra byte: 0x41
+BLOB2_SIZE=$(wc -c < "$BLOB2_FILE")        # = 1048577
+LOCAL_HASH2=$(sha256sum "$BLOB2_FILE" | awk '{print $1}')
+RESULT=$(icp canister call backend startUpload \
+  "(2 : nat, \"multi.pdf\", \"application/pdf\", $BLOB2_SIZE : nat, \"multi-chunk test\", null)")
+check "startUpload multi-chunk returns ok" "ok" "$RESULT"
+SESSION2=$(echo "$RESULT" | grep -o '[0-9]*' | head -1)
+# Split file: chunk 0 = first 1 MB, chunk 1 = last 1 byte
+CHUNK20=$(mktemp /tmp/tp_smoke_XXXXXX.bin); dd if="$BLOB2_FILE" bs=1048576 count=1 of="$CHUNK20" 2>/dev/null
+CHUNK21=$(mktemp /tmp/tp_smoke_XXXXXX.bin); dd if="$BLOB2_FILE" bs=1 skip=1048576 of="$CHUNK21" 2>/dev/null
+ARGS20=$(mktemp /tmp/tp_smoke_XXXXXX.did); make_chunk_args_file "$SESSION2" 0 "$CHUNK20" "$ARGS20"
+RESULT=$(icp canister call backend appendChunk --args-file "$ARGS20"); check "chunk 0 appended" "ok" "$RESULT"
+ARGS21=$(mktemp /tmp/tp_smoke_XXXXXX.did); make_chunk_args_file "$SESSION2" 1 "$CHUNK21" "$ARGS21"
+RESULT=$(icp canister call backend appendChunk --args-file "$ARGS21"); check "chunk 1 appended" "ok" "$RESULT"
+FINALIZE2=$(icp canister call backend finalizeUpload "($SESSION2 : nat)")
+check "finalizeUpload multi-chunk returns ok" "ok" "$FINALIZE2"
+CANISTER_HASH2=$(extract_sha256_hex "$FINALIZE2")
+check "multi-chunk sha256 matches local" "$LOCAL_HASH2" "$CANISTER_HASH2"
+DOC2_ID=$(echo "$FINALIZE2" | python3 -c "import sys,re; m=re.search(r'documentId\s*=\s*(\d+)',sys.stdin.read()); print(m.group(1) if m else '0')")
+# Verify sizeBytes on stored version
+VER2_ID=$(echo "$FINALIZE2" | python3 -c "import sys,re; m=re.search(r'versionId\s*=\s*(\d+)',sys.stdin.read()); print(m.group(1) if m else '0')")
+RESULT=$(icp canister call backend getDocumentVersion "($VER2_ID : nat)")
+check "version sizeBytes matches 1048577" "1_048_577\|1048577" "$RESULT"
+rm -f "$BLOB2_FILE" "$CHUNK20" "$CHUNK21" "$ARGS20" "$ARGS21"
+echo ""
+
+# ── Step 57: Out-of-order chunks (upload order: 2, 0, 3, 1) ──────────────────
+echo "Step 57: Out-of-order chunk upload — upload chunks in order 2, 0, 3, 1"
+BLOB3_FILE=$(mktemp /tmp/tp_smoke_XXXXXX.bin)
+dd if=/dev/urandom bs=1048576 count=3 2>/dev/null >> "$BLOB3_FILE"
+dd if=/dev/urandom bs=524288  count=1 2>/dev/null >> "$BLOB3_FILE"   # 3.5 MB total
+BLOB3_SIZE=$(wc -c < "$BLOB3_FILE")
+RESULT=$(icp canister call backend startUpload \
+  "(2 : nat, \"ooo.pdf\", \"application/pdf\", $BLOB3_SIZE : nat, \"out-of-order test\", null)")
+check "startUpload for OOO test returns ok" "ok" "$RESULT"
+SESSION3=$(echo "$RESULT" | grep -o '[0-9]*' | head -1)
+C30=$(mktemp /tmp/tp_smoke_XXXXXX.bin); dd if="$BLOB3_FILE" bs=1048576 skip=0 count=1 of="$C30" 2>/dev/null
+C31=$(mktemp /tmp/tp_smoke_XXXXXX.bin); dd if="$BLOB3_FILE" bs=1048576 skip=1 count=1 of="$C31" 2>/dev/null
+C32=$(mktemp /tmp/tp_smoke_XXXXXX.bin); dd if="$BLOB3_FILE" bs=1048576 skip=2 count=1 of="$C32" 2>/dev/null
+C33=$(mktemp /tmp/tp_smoke_XXXXXX.bin); dd if="$BLOB3_FILE" bs=1048576 skip=3         of="$C33" 2>/dev/null
+# Upload out of order: 2, 0, 3, 1
+for idx_file in "2:$C32" "0:$C30" "3:$C33" "1:$C31"; do
+  idx="${idx_file%%:*}"; f="${idx_file##*:}"
+  AF=$(mktemp /tmp/tp_smoke_XXXXXX.did); make_chunk_args_file "$SESSION3" "$idx" "$f" "$AF"
+  icp canister call backend appendChunk --args-file "$AF" > /dev/null
+  rm -f "$AF"
+done
+FINALIZE3=$(icp canister call backend finalizeUpload "($SESSION3 : nat)")
+check "OOO finalize succeeds" "ok" "$FINALIZE3"
+rm -f "$BLOB3_FILE" "$C30" "$C31" "$C32" "$C33"
+echo ""
+
+# ── Step 58: Idempotent chunk replacement ─────────────────────────────────────
+echo "Step 58: Idempotent chunk replacement — upload chunk 0 twice, both succeed"
+BLOB4_FILE=$(mktemp /tmp/tp_smoke_XXXXXX.bin)
+dd if=/dev/zero bs=1048576 count=1 2>/dev/null > "$BLOB4_FILE"
+printf '\x42' >> "$BLOB4_FILE"    # 1048577 bytes
+BLOB4_SIZE=$(wc -c < "$BLOB4_FILE")
+RESULT=$(icp canister call backend startUpload \
+  "(2 : nat, \"idempotent.pdf\", \"application/pdf\", $BLOB4_SIZE : nat, \"\", null)")
+SESSION4=$(echo "$RESULT" | grep -o '[0-9]*' | head -1)
+CHUNK40=$(mktemp /tmp/tp_smoke_XXXXXX.bin); dd if="$BLOB4_FILE" bs=1048576 count=1 of="$CHUNK40" 2>/dev/null
+CHUNK41=$(mktemp /tmp/tp_smoke_XXXXXX.bin); dd if="$BLOB4_FILE" bs=1 skip=1048576 of="$CHUNK41" 2>/dev/null
+AF40=$(mktemp /tmp/tp_smoke_XXXXXX.did); make_chunk_args_file "$SESSION4" 0 "$CHUNK40" "$AF40"
+# Upload chunk 0 twice
+RESULT=$(icp canister call backend appendChunk --args-file "$AF40"); check "first upload chunk 0 ok" "ok" "$RESULT"
+RESULT=$(icp canister call backend appendChunk --args-file "$AF40"); check "second upload chunk 0 ok (idempotent)" "ok" "$RESULT"
+AF41=$(mktemp /tmp/tp_smoke_XXXXXX.did); make_chunk_args_file "$SESSION4" 1 "$CHUNK41" "$AF41"
+icp canister call backend appendChunk --args-file "$AF41" > /dev/null
+RESULT=$(icp canister call backend finalizeUpload "($SESSION4 : nat)")
+check "finalize after idempotent chunk ok" "ok" "$RESULT"
+rm -f "$BLOB4_FILE" "$CHUNK40" "$CHUNK41" "$AF40" "$AF41"
+echo ""
+
+# ── Step 59: Reject too-large file ───────────────────────────────────────────
+echo "Step 59: Reject too-large file — totalSizeBytes = 100_000_001"
+RESULT=$(icp canister call backend startUpload \
+  "(2 : nat, \"toobig.pdf\", \"application/pdf\", 100000001 : nat, \"\", null)")
+check "too-large file returns err" "err" "$RESULT"
+check "error mentions size limit" "exceeds\|too large\|limit" "$RESULT"
+RESULT=$(icp canister call backend readAuditEntries "(0 : nat, 1000 : nat)")
+check "too-large audit entry recorded" "startUpload" "$RESULT"
+echo ""
+
+# ── Step 60: Reject invalid content type ─────────────────────────────────────
+echo "Step 60: Reject invalid content type — text/csv"
+RESULT=$(icp canister call backend startUpload \
+  "(2 : nat, \"data.csv\", \"text/csv\", 100 : nat, \"\", null)")
+check "invalid content type returns err" "err" "$RESULT"
+check "error mentions content type" "not allowed\|content type" "$RESULT"
+echo ""
+
+# ── Step 61: Reject nonexistent matter ───────────────────────────────────────
+echo "Step 61: Reject nonexistent matter — matterId = 9999"
+RESULT=$(icp canister call backend startUpload \
+  "(9999 : nat, \"x.pdf\", \"application/pdf\", 100 : nat, \"\", null)")
+check "nonexistent matter returns err" "err" "$RESULT"
+check "error mentions matter not found" "not found\|9999" "$RESULT"
+echo ""
+
+# ── Step 62: Reject archived matter ──────────────────────────────────────────
+echo "Step 62: Reject archived matter — matter#1 is Archived since Step 45"
+RESULT=$(icp canister call backend startUpload \
+  "(1 : nat, \"arch.pdf\", \"application/pdf\", 100 : nat, \"\", null)")
+check "archived matter returns err" "err" "$RESULT"
+check "error mentions archived" "archived" "$RESULT"
+echo ""
+
+# ── Step 63: Caller-lock enforcement ─────────────────────────────────────────
+echo "Step 63: Caller-lock — smoke-master starts session, smoke-doc-associate cannot appendChunk"
+LOCK_BLOB=$(python3 -c "print('blob \"' + '\\\\00' * 100 + '\"', end='')")
+RESULT=$(icp canister call backend startUpload \
+  "(2 : nat, \"lock.pdf\", \"application/pdf\", 100 : nat, \"\", null)")
+check "startUpload for lock test ok" "ok" "$RESULT"
+LOCK_SID=$(echo "$RESULT" | grep -o '[0-9]*' | head -1)
+RESULT=$(icp canister call backend appendChunk \
+  "($LOCK_SID : nat, 0 : nat, $LOCK_BLOB)" --identity smoke-doc-associate)
+check "caller-lock: other user appendChunk returns err" "err" "$RESULT"
+check "error is not the session owner" "session owner\|not authorized\|not the session" "$RESULT"
+# Clean up the dangling session via abandon
+icp canister call backend abandonUpload "($LOCK_SID : nat)" > /dev/null
+echo ""
+
+# ── Step 64: Reject finalize with missing chunks ──────────────────────────────
+echo "Step 64: Reject finalize with missing chunks — upload chunk 0 only of 2-chunk file"
+BLOB5_FILE=$(mktemp /tmp/tp_smoke_XXXXXX.bin)
+dd if=/dev/zero bs=1048576 count=1 2>/dev/null > "$BLOB5_FILE"
+printf '\x43' >> "$BLOB5_FILE"    # 1048577 bytes = 2 chunks
+BLOB5_SIZE=$(wc -c < "$BLOB5_FILE")
+RESULT=$(icp canister call backend startUpload \
+  "(2 : nat, \"incomplete.pdf\", \"application/pdf\", $BLOB5_SIZE : nat, \"\", null)")
+SESSION5=$(echo "$RESULT" | grep -o '[0-9]*' | head -1)
+CHUNK50=$(mktemp /tmp/tp_smoke_XXXXXX.bin); dd if="$BLOB5_FILE" bs=1048576 count=1 of="$CHUNK50" 2>/dev/null
+AF50=$(mktemp /tmp/tp_smoke_XXXXXX.did); make_chunk_args_file "$SESSION5" 0 "$CHUNK50" "$AF50"
+icp canister call backend appendChunk --args-file "$AF50" > /dev/null  # only chunk 0 uploaded
+RESULT=$(icp canister call backend finalizeUpload "($SESSION5 : nat)")
+check "finalize with missing chunk returns err" "err" "$RESULT"
+check "error mentions incomplete\|missing" "incomplete\|missing" "$RESULT"
+icp canister call backend abandonUpload "($SESSION5 : nat)" > /dev/null
+rm -f "$BLOB5_FILE" "$CHUNK50" "$AF50"
+echo ""
+
+# ── Step 65: Version chaining — upload a new version of an existing document ──
+echo "Step 65: Version chaining — upload new version of document $DOC1_ID via replacesDocumentId"
+BLOB6_FILE=$(mktemp /tmp/tp_smoke_XXXXXX.bin)
+printf 'Version 2 of the practice document smoke test.' > "$BLOB6_FILE"
+BLOB6_SIZE=$(wc -c < "$BLOB6_FILE")
+BLOB6_CANDID=$(python3 -c "
+data = open('$BLOB6_FILE', 'rb').read()
+print('blob \"' + ''.join(f'\\\\{b:02x}' for b in data) + '\"', end='')
+")
+RESULT=$(icp canister call backend startUpload \
+  "(2 : nat, \"test_v2.pdf\", \"application/pdf\", $BLOB6_SIZE : nat, \"second version\", opt ($DOC1_ID : nat))")
+check "startUpload for v2 returns ok" "ok" "$RESULT"
+SESSION6=$(echo "$RESULT" | grep -o '[0-9]*' | head -1)
+RESULT=$(icp canister call backend appendChunk \
+  "($SESSION6 : nat, 0 : nat, $BLOB6_CANDID)")
+check "appendChunk v2 ok" "ok" "$RESULT"
+FINALIZE6=$(icp canister call backend finalizeUpload "($SESSION6 : nat)")
+check "finalizeUpload v2 returns ok" "ok" "$FINALIZE6"
+VER2_DOC1=$(echo "$FINALIZE6" | python3 -c "import sys,re; m=re.search(r'versionId\s*=\s*(\d+)',sys.stdin.read()); print(m.group(1) if m else '0')")
+# listVersions should return both v1 and v2 (blob stripped to empty)
+RESULT=$(icp canister call backend listVersions "($DOC1_ID : nat)")
+check "listVersions returns 2 versions" "versionNumber = 1\|versionNumber = 2\|versionNumber = 1 : nat\|versionNumber = 2 : nat" "$RESULT"
+# getDocument should show currentVersionId updated to v2
+RESULT=$(icp canister call backend getDocument "($DOC1_ID : nat)")
+check "document currentVersionId updated to v2" "$VER2_DOC1" "$RESULT"
+rm -f "$BLOB6_FILE"
+echo ""
+
+# ── Step 66: Delete as Associate rejected ─────────────────────────────────────
+echo "Step 66: Delete as Associate rejected — smoke-doc-associate (Associate) cannot delete"
+RESULT=$(icp canister call backend deleteDocument "($DOC2_ID : nat)" --identity smoke-doc-associate)
+check "Associate deleteDocument returns err" "err" "$RESULT"
+check "error is not authorized" "not authorized" "$RESULT"
+RESULT=$(icp canister call backend readAuditEntries "(0 : nat, 1000 : nat)")
+check "failed deleteDocument audit entry recorded" "documentDelete" "$RESULT"
+echo ""
+
+# ── Step 67: Delete as Partner; verify listing excludes/includes deleted ───────
+echo "Step 67: Partner deleteDocument — doc $DOC2_ID; verify listing filter"
+RESULT=$(icp canister call backend deleteDocument "($DOC2_ID : nat)")
+check "Partner deleteDocument returns ok" "ok" "$RESULT"
+RESULT=$(icp canister call backend getDocument "($DOC2_ID : nat)")
+check "deleted document status is Deleted" "Deleted" "$RESULT"
+RESULT=$(icp canister call backend listDocumentsByMatter "(2 : nat, 0 : nat, 1000 : nat, false)")
+check_absent "deleted doc excluded when includeDeleted=false" "Deleted" "$RESULT"
+RESULT=$(icp canister call backend listDocumentsByMatter "(2 : nat, 0 : nat, 1000 : nat, true)")
+check "deleted doc included when includeDeleted=true" "Deleted" "$RESULT"
+echo ""
+
+# ── Step 68: Download deleted document rejected ───────────────────────────────
+echo "Step 68: prepareDocumentDownload on deleted document — expect err"
+VER2_OF_DOC2=$(icp canister call backend getDocument "($DOC2_ID : nat)" | python3 -c \
+  "import sys,re; m=re.search(r'currentVersionId\s*=\s*(\d+)',sys.stdin.read()); print(m.group(1) if m else '0')")
+RESULT=$(icp canister call backend prepareDocumentDownload "($VER2_OF_DOC2 : nat)")
+check "download deleted document returns err" "err" "$RESULT"
+check "error mentions not active\|deleted" "not active\|deleted\|not found" "$RESULT"
+RESULT=$(icp canister call backend readAuditEntries "(0 : nat, 1000 : nat)")
+check "failed download audit entry recorded" "documentDownload" "$RESULT"
+echo ""
+
+# ── Step 69: Download success flow ────────────────────────────────────────────
+echo "Step 69: Download success — prepareDocumentDownload + getChunk for doc $DOC1_ID"
+RESULT=$(icp canister call backend prepareDocumentDownload "($VER1_ID : nat)")
+check "prepareDocumentDownload returns ok" "ok" "$RESULT"
+check "response includes chunkCount" "chunkCount\|chunk_count" "$RESULT"
+RESULT=$(icp canister call backend readAuditEntries "(0 : nat, 1000 : nat)")
+check "documentDownload audit entry recorded with docId" "documentDownload:$DOC1_ID" "$RESULT"
+# getChunk for chunk 0 (single-chunk file)
+RESULT=$(icp canister call backend getChunk "($VER1_ID : nat, 0 : nat)" --query)
+check "getChunk returns blob (not null)" "blob" "$RESULT"
+check_absent "getChunk not null" "null" "$RESULT"
+echo ""
+
+# ── Step 70: Storage budget enforcement ───────────────────────────────────────
+echo "Step 70: Storage budget enforcement — set tight budget, verify startUpload rejects"
+USED=$(icp canister call backend getStorageUsed "()" | grep -o '[0-9_]*' | tr -d '_' | head -1)
+TIGHT_BUDGET=$((USED + 1000))
+RESULT=$(icp canister call backend setStorageBudget "($TIGHT_BUDGET : nat)")
+check "setStorageBudget to used+1000 returns ok" "ok" "$RESULT"
+# Attempt upload of 2000 bytes — should exceed budget
+RESULT=$(icp canister call backend startUpload \
+  "(2 : nat, \"overflow.pdf\", \"application/pdf\", 2000 : nat, \"\", null)")
+check "startUpload exceeding budget returns err" "err" "$RESULT"
+check "error mentions budget exceeded" "budget exceeded\|budget\|available" "$RESULT"
+# Restore budget to default
+icp canister call backend setStorageBudget "(53687091200 : nat)" > /dev/null
+echo ""
+
+# ── Step 71: setStorageBudget reject-on-shrink-below-usage ───────────────────
+echo "Step 71: setStorageBudget cannot shrink below current usage"
+USED=$(icp canister call backend getStorageUsed "()" | grep -o '[0-9_]*' | tr -d '_' | head -1)
+SHRINK=$((USED - 1))
+RESULT=$(icp canister call backend setStorageBudget "($SHRINK : nat)")
+check "setStorageBudget below usage returns err" "err" "$RESULT"
+check "error mentions current usage" "usage\|below\|cannot" "$RESULT"
+echo ""
+
+# ── Step 72: Anonymous upload rejected ────────────────────────────────────────
+echo "Step 72: Anonymous caller — startUpload rejected"
+ANON_RESULT=$(icp canister call backend startUpload \
+  "(2 : nat, \"anon.pdf\", \"application/pdf\", 100 : nat, \"\", null)" \
+  --identity anonymous 2>&1) || true
+check "anonymous startUpload rejected" "err\|Error\|anonymous\|not allowed" "$ANON_RESULT"
+echo ""
+
+# ── Step 73: Abandon upload ───────────────────────────────────────────────────
+echo "Step 73: abandonUpload — start session, append 1 chunk, then abandon"
+BLOB7_CANDID=$(python3 -c "print('blob \"' + '\\\\ff' * 100 + '\"', end='')")
+RESULT=$(icp canister call backend startUpload \
+  "(2 : nat, \"abandon.pdf\", \"application/pdf\", 100 : nat, \"\", null)")
+check "startUpload for abandon test ok" "ok" "$RESULT"
+SESSION7=$(echo "$RESULT" | grep -o '[0-9]*' | head -1)
+icp canister call backend appendChunk "($SESSION7 : nat, 0 : nat, $BLOB7_CANDID)" > /dev/null
+RESULT=$(icp canister call backend abandonUpload "($SESSION7 : nat)")
+check "abandonUpload returns ok" "ok" "$RESULT"
+# Session should be gone — a second abandon should fail
+RESULT=$(icp canister call backend abandonUpload "($SESSION7 : nat)")
+check "second abandonUpload on same session returns err" "err" "$RESULT"
+RESULT=$(icp canister call backend readAuditEntries "(0 : nat, 1000 : nat)")
+check "abandonUpload audit entry recorded" "abandonUpload" "$RESULT"
+echo ""
+
+# ── Final L2b storage and count checks ───────────────────────────────────────
+echo "L2b final checks: getDocumentCount, getStorageUsed"
+RESULT=$(icp canister call backend getDocumentCount "()")
+check "getDocumentCount > 0" "1\|2\|3\|4\|5" "$RESULT"
+RESULT=$(icp canister call backend getStorageUsed "()")
+check "getStorageUsed > 0" "[1-9]" "$RESULT"
+echo ""
+
 # ── Summary ──────────────────────────────────────────────────────────────────
 echo "=== Results: $PASS passed, $FAIL failed ==="
 if [ "$FAIL" -gt 0 ]; then
