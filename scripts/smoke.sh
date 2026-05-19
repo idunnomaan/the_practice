@@ -804,6 +804,125 @@ RESULT=$(icp canister call backend getStorageUsed "()")
 check "getStorageUsed > 0" "[1-9]" "$RESULT"
 echo ""
 
+# ═══════════════════════════════════════════════════════════════════════════════
+# L3 Upgrade survival test — Steps 74–85
+# Verifies Enhanced Orthogonal Persistence: all actor state survives an upgrade.
+# NEVER use --mode reinstall here — it destroys all state.
+# ═══════════════════════════════════════════════════════════════════════════════
+
+# ── Step 74: Capture pre-upgrade state ───────────────────────────────────────
+echo "Step 74: L3 — capture pre-upgrade state"
+PRE_USER_COUNT=$(icp canister call backend getUserCount "()" | grep -o '[0-9_]*' | tr -d '_' | head -1)
+PRE_CLIENT_COUNT=$(icp canister call backend getClientCount "()" | grep -o '[0-9_]*' | tr -d '_' | head -1)
+PRE_AUDIT_OUT=$(icp canister call backend readAuditEntries "(0 : nat, 1000 : nat)")
+PRE_MAX_AUDIT_ID=$(echo "$PRE_AUDIT_OUT" | python3 -c "
+import sys, re
+ids = [int(m.group(1)) for m in re.finditer(r'id\s*=\s*(\d+)\s*:', sys.stdin.read())]
+print(max(ids) if ids else 0)
+")
+PRE_DOC1_HASH=$(extract_sha256_hex "$(icp canister call backend getDocumentVersion "($VER1_ID : nat)")")
+echo "  pre_user_count=$PRE_USER_COUNT  pre_client_count=$PRE_CLIENT_COUNT"
+echo "  pre_max_audit_id=$PRE_MAX_AUDIT_ID  pre_doc1_sha256=$PRE_DOC1_HASH"
+echo ""
+
+# ── Step 75: Upgrade the canister — preserves all state via EOP ──────────────
+echo "Step 75: L3 — upgrade canister (icp deploy --mode upgrade)"
+icp deploy backend --mode upgrade --args "(principal \"$MASTER_PRINCIPAL\")"
+echo "  Upgrade complete."
+echo ""
+
+# ── Step 76: L1 post-upgrade — user count unchanged ──────────────────────────
+echo "Step 76: L1 post-upgrade — getUserCount matches pre-upgrade value"
+RESULT=$(icp canister call backend getUserCount "()")
+check "L1: user count unchanged after upgrade" "$PRE_USER_COUNT" "$RESULT"
+echo ""
+
+# ── Step 77: L1 post-upgrade — master controller still present ───────────────
+echo "Step 77: L1 post-upgrade — master controller still registered"
+RESULT=$(icp canister call backend getMasterController "()")
+check "L1: master controller principal intact" "$MASTER_PRINCIPAL" "$RESULT"
+echo ""
+
+# ── Step 78: L5 post-upgrade — audit entry id=1 (install) still exists ───────
+echo "Step 78: L5 post-upgrade — audit entry id=1 (install event) still present"
+RESULT=$(icp canister call backend readAuditEntries "(0 : nat, 10 : nat)")
+check "L5: install audit entry id=1 still present" "install" "$RESULT"
+echo ""
+
+# ── Step 79: L5 post-upgrade — audit counter not reset ───────────────────────
+echo "Step 79: L5 post-upgrade — nextAuditId >= pre-upgrade value (counter not reset)"
+POST_AUDIT_OUT=$(icp canister call backend readAuditEntries "(0 : nat, 1000 : nat)")
+POST_MAX_AUDIT_ID=$(echo "$POST_AUDIT_OUT" | python3 -c "
+import sys, re
+ids = [int(m.group(1)) for m in re.finditer(r'id\s*=\s*(\d+)\s*:', sys.stdin.read())]
+print(max(ids) if ids else 0)
+")
+if [ "$POST_MAX_AUDIT_ID" -ge "$PRE_MAX_AUDIT_ID" ]; then
+  echo "  PASS: L5: audit counter not reset (pre=$PRE_MAX_AUDIT_ID post=$POST_MAX_AUDIT_ID)"
+  PASS=$((PASS + 1))
+else
+  echo "  FAIL: L5: audit counter reset! pre=$PRE_MAX_AUDIT_ID post=$POST_MAX_AUDIT_ID"
+  FAIL=$((FAIL + 1))
+fi
+echo ""
+
+# ── Step 80: L2 post-upgrade — getClient(1) record intact ────────────────────
+echo "Step 80: L2 post-upgrade — getClient(1) returns same record"
+RESULT=$(icp canister call backend getClient "(1 : nat)")
+check "L2: client 1 name intact after upgrade" "Acme Holdings PLC" "$RESULT"
+check "L2: client 1 type intact" "Company" "$RESULT"
+echo ""
+
+# ── Step 81: L2 post-upgrade — getMatter FK chain intact ─────────────────────
+echo "Step 81: L2 post-upgrade — getMatter(2) still linked to client 1; client count unchanged"
+RESULT=$(icp canister call backend getMatter "(2 : nat)")
+check "L2: matter 2 record present after upgrade" "Matter Two" "$RESULT"
+RESULT=$(icp canister call backend getClientCount "()")
+check "L2: client count unchanged" "$PRE_CLIENT_COUNT" "$RESULT"
+echo ""
+
+# ── Step 82: L2b post-upgrade — prepareDocumentDownload succeeds ─────────────
+echo "Step 82: L2b post-upgrade — prepareDocumentDownload($VER1_ID) succeeds"
+RESULT=$(icp canister call backend prepareDocumentDownload "($VER1_ID : nat)")
+check "L2b: prepareDocumentDownload still works after upgrade" "ok" "$RESULT"
+echo ""
+
+# ── Step 83: L2b post-upgrade — getChunk bytes SHA-256 matches stored hash ───
+echo "Step 83: L2b post-upgrade — getChunk bytes SHA-256 matches pre-upgrade stored hash"
+CHUNK_RESULT=$(icp canister call backend getChunk "($VER1_ID : nat, 0 : nat)" --query)
+POST_DOC1_HASH=$(echo "$CHUNK_RESULT" | python3 -c "
+import sys, re, hashlib
+out = sys.stdin.read()
+m = re.search(r'blob\s+\"([^\"]*)\"\s*\)', out)
+if not m:
+    print('NOT_FOUND'); sys.exit(0)
+raw = m.group(1)
+data = bytearray()
+i = 0
+while i < len(raw):
+    if raw[i] == '\\\\' and i + 2 < len(raw):
+        data.append(int(raw[i+1:i+3], 16))
+        i += 3
+    else:
+        data.append(ord(raw[i]))
+        i += 1
+print(hashlib.sha256(bytes(data)).hexdigest())
+")
+check "L2b: downloaded bytes SHA-256 matches pre-upgrade stored hash" "$PRE_DOC1_HASH" "$POST_DOC1_HASH"
+echo ""
+
+# ── Step 84: Counters — totalStorageUsedBytes > 0 ────────────────────────────
+echo "Step 84: Counters — totalStorageUsedBytes > 0 after upgrade"
+RESULT=$(icp canister call backend getStorageUsed "()")
+check "L3: totalStorageUsedBytes > 0 after upgrade" "[1-9]" "$RESULT"
+echo ""
+
+# ── Step 85: Counters — storageBudgetBytes = 53_687_091_200 (50 GB default) ──
+echo "Step 85: Counters — storageBudgetBytes = 53_687_091_200 (50 GB default intact)"
+RESULT=$(icp canister call backend getStorageBudget "()")
+check "L3: storageBudgetBytes = 50 GB default after upgrade" "53_687_091_200\|53687091200" "$RESULT"
+echo ""
+
 # ── Summary ──────────────────────────────────────────────────────────────────
 echo "=== Results: $PASS passed, $FAIL failed ==="
 if [ "$FAIL" -gt 0 ]; then
