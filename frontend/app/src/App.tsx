@@ -1,75 +1,39 @@
-import { useState } from "react";
-import { createActor } from "./backend/api/backend";
-import { getCanisterEnv } from "@icp-sdk/core/agent/canister-env";
-import "./App.css";
+import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
+import { AuthProvider } from "./auth/AuthContext";
+import ProtectedRoute from "./components/ProtectedRoute";
+import Layout from "./components/Layout";
+import { PartnerOnly } from "./components/RoleGate";
+import LoginPage from "./pages/LoginPage";
+import DashboardPage from "./pages/DashboardPage";
+import ClientsPage from "./pages/ClientsPage";
+import ClientDetailPage from "./pages/ClientDetailPage";
+import MattersPage from "./pages/MattersPage";
+import MatterDetailPage from "./pages/MatterDetailPage";
+import DocumentsPage from "./pages/DocumentsPage";
+import UsersPage from "./pages/UsersPage";
+import AuditPage from "./pages/AuditPage";
 
-// Here we define the environment variables that the asset canister serves.
-// By default, the CLI sets all the canister IDs in the environment variables of the asset canister
-// using the `PUBLIC_CANISTER_ID:<canister-name>` format.
-// For this reason, we can expect the `PUBLIC_CANISTER_ID:backend` environment variable to be set.
-interface CanisterEnv {
-  readonly "PUBLIC_CANISTER_ID:backend": string;
-}
-
-// We only want to access the environment variables when serving the frontend from the asset canister.
-// In development mode, we use a fixed canister ID for the backend canister.
-const canisterEnv = getCanisterEnv<CanisterEnv>();
-const canisterId = canisterEnv["PUBLIC_CANISTER_ID:backend"];
-
-// We want to fetch the root key from the replica when developing locally.
-const helloWorldActor = createActor(canisterId, {
-  agentOptions: {
-    rootKey: !import.meta.env.DEV ? canisterEnv!.IC_ROOT_KEY : undefined,
-    shouldFetchRootKey: import.meta.env.DEV,
-  },
-});
-
-function App() {
-  const [greeting, setGreeting] = useState("");
-
-  function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    const nameInput = (event.target as HTMLFormElement).elements.namedItem(
-      "name"
-    ) as HTMLInputElement;
-
-    helloWorldActor.greet(nameInput.value).then(setGreeting);
-    return false;
-  }
-
+export default function App() {
   return (
-    <main className="page">
-      <section className="panel">
-        <div className="brand" aria-label="ICP plus Vite">
-          <img src="/icp.svg" alt="ICP logo" className="brand-icp" />
-          <span className="plus">+</span>
-          <img src="/vite.svg" alt="Vite logo" className="brand-vite" />
-        </div>
-        <h1 className="title">Frontend Environment Variables</h1>
-        <p className="subtitle">
-          Call the backend canister and get a greeting.
-        </p>
-        <form className="form" action="#" onSubmit={handleSubmit}>
-          <label htmlFor="name">Enter your name</label>
-          <div className="controls">
-            <input
-              id="name"
-              alt="Name"
-              type="text"
-              className="input"
-              placeholder="Ada Lovelace"
-            />
-            <button type="submit" className="button">
-              Greet me
-            </button>
-          </div>
-        </form>
-        <section id="greeting" className="greeting" aria-live="polite">
-          {greeting}
-        </section>
-      </section>
-    </main>
+    <AuthProvider>
+      <BrowserRouter>
+        <Routes>
+          <Route path="/login" element={<LoginPage />} />
+          <Route element={<ProtectedRoute />}>
+            <Route element={<Layout />}>
+              <Route index element={<Navigate to="/dashboard" replace />} />
+              <Route path="/dashboard" element={<DashboardPage />} />
+              <Route path="/clients" element={<ClientsPage />} />
+              <Route path="/clients/:id" element={<ClientDetailPage />} />
+              <Route path="/matters" element={<MattersPage />} />
+              <Route path="/matters/:id" element={<MatterDetailPage />} />
+              <Route path="/matters/:id/documents" element={<DocumentsPage />} />
+              <Route path="/users" element={<PartnerOnly><UsersPage /></PartnerOnly>} />
+              <Route path="/audit" element={<PartnerOnly><AuditPage /></PartnerOnly>} />
+            </Route>
+          </Route>
+        </Routes>
+      </BrowserRouter>
+    </AuthProvider>
   );
 }
-
-export default App;

@@ -51,38 +51,41 @@ function candid_none<T>(): [] {
 function record_opt_to_undefined<T>(arg: T | null): T | undefined {
     return arg == null ? undefined : arg;
 }
-export interface ThePracticeInterface {
-    addUser(p: Principal, role: Role): Promise<Result>;
-    getMasterController(): Promise<Principal>;
-    getMyRole(): Promise<Role | null>;
-    getOperationsPrincipal(): Promise<Principal | null>;
-    getUserCount(): Promise<bigint>;
-    grantOperations(p: Principal): Promise<Result>;
-    listUsers(): Promise<Array<[Principal, UserRecord]>>;
-    readAuditEntries(after: bigint, limit: bigint): Promise<Result_1>;
-    removeUser(p: Principal): Promise<Result>;
-    revokeOperations(): Promise<Result>;
-    setUserRole(p: Principal, role: Role): Promise<Result>;
-    suspendUser(p: Principal): Promise<Result>;
-    transferMasterController(p: Principal): Promise<Result>;
-    unsuspendUser(p: Principal): Promise<Result>;
-    whoAmI(): Promise<Principal>;
-}
+export type Result_2 = {
+    __kind__: "ok";
+    ok: Array<AuditEntry>;
+} | {
+    __kind__: "err";
+    err: string;
+};
 export type Time = bigint;
-export type AuditOutcome = {
-    __kind__: "ok";
-    ok: null;
-} | {
-    __kind__: "err";
-    err: string;
-};
-export type Result = {
-    __kind__: "ok";
-    ok: null;
-} | {
-    __kind__: "err";
-    err: string;
-};
+export interface MatterStatusCounts {
+    closed: bigint;
+    open: bigint;
+    onHold: bigint;
+    archived: bigint;
+}
+export interface DocumentVersion {
+    versionId: bigint;
+    sha256: Uint8Array;
+    contentType: string;
+    blob: Uint8Array;
+    filename: string;
+    documentId: bigint;
+    sizeBytes: bigint;
+    uploadNotes: string;
+    versionNumber: bigint;
+    uploadedAt: Time;
+    uploadedBy: Principal;
+}
+export interface Document {
+    id: bigint;
+    status: DocumentStatus;
+    createdAt: Time;
+    createdBy: Principal;
+    matterId: bigint;
+    currentVersionId: bigint;
+}
 export interface AuditEntry {
     id: bigint;
     action: string;
@@ -91,9 +94,25 @@ export interface AuditEntry {
     caller: Principal;
     outcome: AuditOutcome;
 }
+export type Result_5 = {
+    __kind__: "ok";
+    ok: ExportManifest;
+} | {
+    __kind__: "err";
+    err: string;
+};
+export interface DocumentFilter {
+    contentType?: string;
+    filenameContains?: string;
+    matterId?: bigint;
+    uploadedAfter?: Time;
+    statusFilter?: DocumentStatus;
+    uploadedBy?: Principal;
+    uploadedBefore?: Time;
+}
 export type Result_1 = {
     __kind__: "ok";
-    ok: Array<AuditEntry>;
+    ok: bigint;
 } | {
     __kind__: "err";
     err: string;
@@ -104,6 +123,202 @@ export interface UserRecord {
     addedBy: Principal;
     suspended: boolean;
 }
+export interface ThePracticeInterface {
+    abandonUpload(sessionId: bigint): Promise<Result>;
+    addUser(p: Principal, role: Role): Promise<Result>;
+    appendChunk(sessionId: bigint, chunkIndex: bigint, chunkBytes: Uint8Array): Promise<Result>;
+    archiveMatter(id: bigint): Promise<Result>;
+    assignPartnerToMatter(id: bigint, partner: Principal | null): Promise<Result>;
+    clientsByStatus(): Promise<ClientStatusCounts>;
+    closeMatter(id: bigint): Promise<Result>;
+    createClient(name: string, clientType: ClientType, primaryEmail: string | null, primaryPhone: string | null, identifier: string | null, notes: string): Promise<Result_1>;
+    createExportManifest(): Promise<Result_5>;
+    createMatter(title: string, matterType: string, clientId: bigint, assignedPartner: Principal | null, description: string): Promise<Result_1>;
+    deactivateClient(id: bigint): Promise<Result>;
+    deleteDocument(documentId: bigint): Promise<Result>;
+    documentsByStatus(): Promise<DocumentStatusCounts>;
+    finalizeUpload(sessionId: bigint): Promise<Result_4>;
+    getChunk(versionId: bigint, chunkIndex: bigint): Promise<Uint8Array | null>;
+    getClient(id: bigint): Promise<Client | null>;
+    getClientCount(): Promise<bigint>;
+    getDocument(id: bigint): Promise<Document | null>;
+    getDocumentCount(): Promise<bigint>;
+    getDocumentVersion(versionId: bigint): Promise<DocumentVersion | null>;
+    getMasterController(): Promise<Principal>;
+    getMatter(id: bigint): Promise<Matter | null>;
+    getMatterCount(): Promise<bigint>;
+    getMyRole(): Promise<Role | null>;
+    getOperationsPrincipal(): Promise<Principal | null>;
+    getStorageBudget(): Promise<bigint>;
+    getStorageUsed(): Promise<bigint>;
+    getUserCount(): Promise<bigint>;
+    grantOperations(p: Principal): Promise<Result>;
+    listClients(after: bigint, limit: bigint, includeInactive: boolean): Promise<Array<Client>>;
+    listDocumentsByMatter(matterId: bigint, after: bigint, limit: bigint, includeDeleted: boolean): Promise<Array<Document>>;
+    listMatters(after: bigint, limit: bigint, statusFilter: MatterStatus | null): Promise<Array<Matter>>;
+    listMattersByClient(clientId: bigint, after: bigint, limit: bigint, statusFilter: MatterStatus | null): Promise<Array<Matter>>;
+    listUsers(): Promise<Array<[Principal, UserRecord]>>;
+    listVersions(documentId: bigint): Promise<Array<DocumentVersion>>;
+    mattersByStatus(): Promise<MatterStatusCounts>;
+    prepareDocumentDownload(versionId: bigint): Promise<Result_3>;
+    putMatterOnHold(id: bigint): Promise<Result>;
+    reactivateClient(id: bigint): Promise<Result>;
+    readAuditEntries(after: bigint, limit: bigint): Promise<Result_2>;
+    removeUser(p: Principal): Promise<Result>;
+    reopenMatter(id: bigint): Promise<Result>;
+    resumeMatter(id: bigint): Promise<Result>;
+    revokeOperations(): Promise<Result>;
+    searchClients(filter: ClientFilter, after: bigint, limit: bigint): Promise<Array<Client>>;
+    searchDocuments(filter: DocumentFilter, after: bigint, limit: bigint): Promise<Array<DocumentSearchResult>>;
+    searchMatters(filter: MatterFilter, after: bigint, limit: bigint): Promise<Array<Matter>>;
+    setStorageBudget(newBudgetBytes: bigint): Promise<Result>;
+    setUserRole(p: Principal, role: Role): Promise<Result>;
+    startUpload(matterId: bigint, filename: string, contentType: string, totalSizeBytes: bigint, uploadNotes: string, replacesDocumentId: bigint | null): Promise<Result_1>;
+    suspendUser(p: Principal): Promise<Result>;
+    transferMasterController(p: Principal): Promise<Result>;
+    unsuspendUser(p: Principal): Promise<Result>;
+    updateClient(id: bigint, name: string | null, clientType: ClientType | null, primaryEmail: string | null, primaryPhone: string | null, identifier: string | null, notes: string | null): Promise<Result>;
+    updateMatter(id: bigint, title: string | null, matterType: string | null, clientId: bigint | null, assignedPartner: Some<Principal | null> | None, description: string | null): Promise<Result>;
+    whoAmI(): Promise<Principal>;
+}
+export type Result_4 = {
+    __kind__: "ok";
+    ok: {
+        versionId: bigint;
+        sha256: Uint8Array;
+        documentId: bigint;
+    };
+} | {
+    __kind__: "err";
+    err: string;
+};
+export interface DocumentSearchResult {
+    currentVersion: DocumentVersion;
+    document: Document;
+}
+export interface ClientFilter {
+    createdBefore?: Time;
+    nameContains?: string;
+    clientType?: ClientType;
+    createdAfter?: Time;
+    statusFilter?: ClientStatus;
+    identifierContains?: string;
+}
+export interface MatterFilter {
+    openedBefore?: Time;
+    clientId?: bigint;
+    closedAfter?: Time;
+    titleContains?: string;
+    closedBefore?: Time;
+    openedAfter?: Time;
+    statusFilter?: MatterStatus;
+    matterTypeContains?: string;
+    assignedPartner?: Principal;
+}
+export interface Client {
+    id: bigint;
+    status: ClientStatus;
+    clientType: ClientType;
+    name: string;
+    createdAt: Time;
+    createdBy: Principal;
+    primaryEmail?: string;
+    notes: string;
+    lastModifiedAt: Time;
+    lastModifiedBy: Principal;
+    primaryPhone?: string;
+    identifier?: string;
+}
+export interface ExportManifest {
+    totalVersions: bigint;
+    documents: Array<{
+        versionIds: Array<bigint>;
+        documentId: bigint;
+    }>;
+    matterIds: Array<bigint>;
+    totalMatters: bigint;
+    generatedAt: Time;
+    generatedBy: Principal;
+    userPrincipals: Array<Principal>;
+    storageUsedBytes: bigint;
+    masterController: Principal;
+    totalClients: bigint;
+    storageBudgetBytes: bigint;
+    clientIds: Array<bigint>;
+    totalAuditEntries: bigint;
+    operationsPrincipal?: Principal;
+    totalDocuments: bigint;
+}
+export interface ClientStatusCounts {
+    active: bigint;
+    inactive: bigint;
+}
+export interface Matter {
+    id: bigint;
+    status: MatterStatus;
+    title: string;
+    clientId: bigint;
+    createdAt: Time;
+    createdBy: Principal;
+    description: string;
+    closedAt?: Time;
+    lastModifiedAt: Time;
+    lastModifiedBy: Principal;
+    matterType: string;
+    assignedPartner?: Principal;
+    openedAt: Time;
+}
+export type Result = {
+    __kind__: "ok";
+    ok: null;
+} | {
+    __kind__: "err";
+    err: string;
+};
+export type Result_3 = {
+    __kind__: "ok";
+    ok: {
+        sha256: Uint8Array;
+        contentType: string;
+        filename: string;
+        chunkCount: bigint;
+        documentId: bigint;
+        sizeBytes: bigint;
+    };
+} | {
+    __kind__: "err";
+    err: string;
+};
+export type AuditOutcome = {
+    __kind__: "ok";
+    ok: null;
+} | {
+    __kind__: "err";
+    err: string;
+};
+export interface DocumentStatusCounts {
+    deleted: bigint;
+    active: bigint;
+}
+export enum ClientStatus {
+    Inactive = "Inactive",
+    Active = "Active"
+}
+export enum ClientType {
+    Company = "Company",
+    Individual = "Individual",
+    Other = "Other"
+}
+export enum DocumentStatus {
+    Active = "Active",
+    Deleted = "Deleted"
+}
+export enum MatterStatus {
+    OnHold = "OnHold",
+    Open = "Open",
+    Closed = "Closed",
+    Archived = "Archived"
+}
 export enum Role {
     Staff = "Staff",
     Associate = "Associate",
@@ -111,24 +326,116 @@ export enum Role {
 }
 export interface backendInterface extends ThePracticeInterface {
 }
-import type { AuditEntry as _AuditEntry, AuditOutcome as _AuditOutcome, Result as _Result, Result_1 as _Result_1, Role as _Role, Time as _Time, UserRecord as _UserRecord } from "./declarations/backend.did";
+import type { AuditEntry as _AuditEntry, AuditOutcome as _AuditOutcome, Client as _Client, ClientFilter as _ClientFilter, ClientStatus as _ClientStatus, ClientType as _ClientType, Document as _Document, DocumentFilter as _DocumentFilter, DocumentSearchResult as _DocumentSearchResult, DocumentStatus as _DocumentStatus, DocumentVersion as _DocumentVersion, ExportManifest as _ExportManifest, Matter as _Matter, MatterFilter as _MatterFilter, MatterStatus as _MatterStatus, Result as _Result, Result_1 as _Result_1, Result_2 as _Result_2, Result_3 as _Result_3, Result_4 as _Result_4, Result_5 as _Result_5, Role as _Role, Time as _Time, UserRecord as _UserRecord } from "./declarations/backend.did";
 export class Backend implements backendInterface {
     constructor(private actor: ActorSubclass<_SERVICE>){}
+    async abandonUpload(arg0: bigint): Promise<Result> {
+        const result = await this.actor.abandonUpload(arg0);
+        return from_candid_Result_n1(result);
+    }
     async addUser(arg0: Principal, arg1: Role): Promise<Result> {
-        const result = await this.actor.addUser(arg0, to_candid_Role_n1(arg1));
-        return from_candid_Result_n3(result);
+        const result = await this.actor.addUser(arg0, to_candid_Role_n3(arg1));
+        return from_candid_Result_n1(result);
+    }
+    async appendChunk(arg0: bigint, arg1: bigint, arg2: Uint8Array): Promise<Result> {
+        const result = await this.actor.appendChunk(arg0, arg1, arg2);
+        return from_candid_Result_n1(result);
+    }
+    async archiveMatter(arg0: bigint): Promise<Result> {
+        const result = await this.actor.archiveMatter(arg0);
+        return from_candid_Result_n1(result);
+    }
+    async assignPartnerToMatter(arg0: bigint, arg1: Principal | null): Promise<Result> {
+        const result = await this.actor.assignPartnerToMatter(arg0, to_candid_opt_n5(arg1));
+        return from_candid_Result_n1(result);
+    }
+    async clientsByStatus(): Promise<ClientStatusCounts> {
+        const result = await this.actor.clientsByStatus();
+        return result;
+    }
+    async closeMatter(arg0: bigint): Promise<Result> {
+        const result = await this.actor.closeMatter(arg0);
+        return from_candid_Result_n1(result);
+    }
+    async createClient(arg0: string, arg1: ClientType, arg2: string | null, arg3: string | null, arg4: string | null, arg5: string): Promise<Result_1> {
+        const result = await this.actor.createClient(arg0, to_candid_ClientType_n6(arg1), to_candid_opt_n8(arg2), to_candid_opt_n8(arg3), to_candid_opt_n8(arg4), arg5);
+        return from_candid_Result_1_n9(result);
+    }
+    async createExportManifest(): Promise<Result_5> {
+        const result = await this.actor.createExportManifest();
+        return from_candid_Result_5_n11(result);
+    }
+    async createMatter(arg0: string, arg1: string, arg2: bigint, arg3: Principal | null, arg4: string): Promise<Result_1> {
+        const result = await this.actor.createMatter(arg0, arg1, arg2, to_candid_opt_n5(arg3), arg4);
+        return from_candid_Result_1_n9(result);
+    }
+    async deactivateClient(arg0: bigint): Promise<Result> {
+        const result = await this.actor.deactivateClient(arg0);
+        return from_candid_Result_n1(result);
+    }
+    async deleteDocument(arg0: bigint): Promise<Result> {
+        const result = await this.actor.deleteDocument(arg0);
+        return from_candid_Result_n1(result);
+    }
+    async documentsByStatus(): Promise<DocumentStatusCounts> {
+        const result = await this.actor.documentsByStatus();
+        return result;
+    }
+    async finalizeUpload(arg0: bigint): Promise<Result_4> {
+        const result = await this.actor.finalizeUpload(arg0);
+        return from_candid_Result_4_n16(result);
+    }
+    async getChunk(arg0: bigint, arg1: bigint): Promise<Uint8Array | null> {
+        const result = await this.actor.getChunk(arg0, arg1);
+        return from_candid_opt_n18(result);
+    }
+    async getClient(arg0: bigint): Promise<Client | null> {
+        const result = await this.actor.getClient(arg0);
+        return from_candid_opt_n19(result);
+    }
+    async getClientCount(): Promise<bigint> {
+        const result = await this.actor.getClientCount();
+        return result;
+    }
+    async getDocument(arg0: bigint): Promise<Document | null> {
+        const result = await this.actor.getDocument(arg0);
+        return from_candid_opt_n27(result);
+    }
+    async getDocumentCount(): Promise<bigint> {
+        const result = await this.actor.getDocumentCount();
+        return result;
+    }
+    async getDocumentVersion(arg0: bigint): Promise<DocumentVersion | null> {
+        const result = await this.actor.getDocumentVersion(arg0);
+        return from_candid_opt_n32(result);
     }
     async getMasterController(): Promise<Principal> {
         const result = await this.actor.getMasterController();
         return result;
     }
+    async getMatter(arg0: bigint): Promise<Matter | null> {
+        const result = await this.actor.getMatter(arg0);
+        return from_candid_opt_n33(result);
+    }
+    async getMatterCount(): Promise<bigint> {
+        const result = await this.actor.getMatterCount();
+        return result;
+    }
     async getMyRole(): Promise<Role | null> {
         const result = await this.actor.getMyRole();
-        return from_candid_opt_n5(result);
+        return from_candid_opt_n39(result);
     }
     async getOperationsPrincipal(): Promise<Principal | null> {
         const result = await this.actor.getOperationsPrincipal();
-        return from_candid_opt_n8(result);
+        return from_candid_opt_n15(result);
+    }
+    async getStorageBudget(): Promise<bigint> {
+        const result = await this.actor.getStorageBudget();
+        return result;
+    }
+    async getStorageUsed(): Promise<bigint> {
+        const result = await this.actor.getStorageUsed();
+        return result;
     }
     async getUserCount(): Promise<bigint> {
         const result = await this.actor.getUserCount();
@@ -136,70 +443,370 @@ export class Backend implements backendInterface {
     }
     async grantOperations(arg0: Principal): Promise<Result> {
         const result = await this.actor.grantOperations(arg0);
-        return from_candid_Result_n3(result);
+        return from_candid_Result_n1(result);
+    }
+    async listClients(arg0: bigint, arg1: bigint, arg2: boolean): Promise<Array<Client>> {
+        const result = await this.actor.listClients(arg0, arg1, arg2);
+        return from_candid_vec_n42(result);
+    }
+    async listDocumentsByMatter(arg0: bigint, arg1: bigint, arg2: bigint, arg3: boolean): Promise<Array<Document>> {
+        const result = await this.actor.listDocumentsByMatter(arg0, arg1, arg2, arg3);
+        return from_candid_vec_n43(result);
+    }
+    async listMatters(arg0: bigint, arg1: bigint, arg2: MatterStatus | null): Promise<Array<Matter>> {
+        const result = await this.actor.listMatters(arg0, arg1, to_candid_opt_n44(arg2));
+        return from_candid_vec_n47(result);
+    }
+    async listMattersByClient(arg0: bigint, arg1: bigint, arg2: bigint, arg3: MatterStatus | null): Promise<Array<Matter>> {
+        const result = await this.actor.listMattersByClient(arg0, arg1, arg2, to_candid_opt_n44(arg3));
+        return from_candid_vec_n47(result);
     }
     async listUsers(): Promise<Array<[Principal, UserRecord]>> {
         const result = await this.actor.listUsers();
-        return from_candid_vec_n9(result);
+        return from_candid_vec_n48(result);
     }
-    async readAuditEntries(arg0: bigint, arg1: bigint): Promise<Result_1> {
+    async listVersions(arg0: bigint): Promise<Array<DocumentVersion>> {
+        const result = await this.actor.listVersions(arg0);
+        return result;
+    }
+    async mattersByStatus(): Promise<MatterStatusCounts> {
+        const result = await this.actor.mattersByStatus();
+        return result;
+    }
+    async prepareDocumentDownload(arg0: bigint): Promise<Result_3> {
+        const result = await this.actor.prepareDocumentDownload(arg0);
+        return from_candid_Result_3_n52(result);
+    }
+    async putMatterOnHold(arg0: bigint): Promise<Result> {
+        const result = await this.actor.putMatterOnHold(arg0);
+        return from_candid_Result_n1(result);
+    }
+    async reactivateClient(arg0: bigint): Promise<Result> {
+        const result = await this.actor.reactivateClient(arg0);
+        return from_candid_Result_n1(result);
+    }
+    async readAuditEntries(arg0: bigint, arg1: bigint): Promise<Result_2> {
         const result = await this.actor.readAuditEntries(arg0, arg1);
-        return from_candid_Result_1_n13(result);
+        return from_candid_Result_2_n54(result);
     }
     async removeUser(arg0: Principal): Promise<Result> {
         const result = await this.actor.removeUser(arg0);
-        return from_candid_Result_n3(result);
+        return from_candid_Result_n1(result);
+    }
+    async reopenMatter(arg0: bigint): Promise<Result> {
+        const result = await this.actor.reopenMatter(arg0);
+        return from_candid_Result_n1(result);
+    }
+    async resumeMatter(arg0: bigint): Promise<Result> {
+        const result = await this.actor.resumeMatter(arg0);
+        return from_candid_Result_n1(result);
     }
     async revokeOperations(): Promise<Result> {
         const result = await this.actor.revokeOperations();
-        return from_candid_Result_n3(result);
+        return from_candid_Result_n1(result);
+    }
+    async searchClients(arg0: ClientFilter, arg1: bigint, arg2: bigint): Promise<Array<Client>> {
+        const result = await this.actor.searchClients(to_candid_ClientFilter_n60(arg0), arg1, arg2);
+        return from_candid_vec_n42(result);
+    }
+    async searchDocuments(arg0: DocumentFilter, arg1: bigint, arg2: bigint): Promise<Array<DocumentSearchResult>> {
+        const result = await this.actor.searchDocuments(to_candid_DocumentFilter_n64(arg0), arg1, arg2);
+        return from_candid_vec_n68(result);
+    }
+    async searchMatters(arg0: MatterFilter, arg1: bigint, arg2: bigint): Promise<Array<Matter>> {
+        const result = await this.actor.searchMatters(to_candid_MatterFilter_n71(arg0), arg1, arg2);
+        return from_candid_vec_n47(result);
+    }
+    async setStorageBudget(arg0: bigint): Promise<Result> {
+        const result = await this.actor.setStorageBudget(arg0);
+        return from_candid_Result_n1(result);
     }
     async setUserRole(arg0: Principal, arg1: Role): Promise<Result> {
-        const result = await this.actor.setUserRole(arg0, to_candid_Role_n1(arg1));
-        return from_candid_Result_n3(result);
+        const result = await this.actor.setUserRole(arg0, to_candid_Role_n3(arg1));
+        return from_candid_Result_n1(result);
+    }
+    async startUpload(arg0: bigint, arg1: string, arg2: string, arg3: bigint, arg4: string, arg5: bigint | null): Promise<Result_1> {
+        const result = await this.actor.startUpload(arg0, arg1, arg2, arg3, arg4, to_candid_opt_n73(arg5));
+        return from_candid_Result_1_n9(result);
     }
     async suspendUser(arg0: Principal): Promise<Result> {
         const result = await this.actor.suspendUser(arg0);
-        return from_candid_Result_n3(result);
+        return from_candid_Result_n1(result);
     }
     async transferMasterController(arg0: Principal): Promise<Result> {
         const result = await this.actor.transferMasterController(arg0);
-        return from_candid_Result_n3(result);
+        return from_candid_Result_n1(result);
     }
     async unsuspendUser(arg0: Principal): Promise<Result> {
         const result = await this.actor.unsuspendUser(arg0);
-        return from_candid_Result_n3(result);
+        return from_candid_Result_n1(result);
+    }
+    async updateClient(arg0: bigint, arg1: string | null, arg2: ClientType | null, arg3: string | null, arg4: string | null, arg5: string | null, arg6: string | null): Promise<Result> {
+        const result = await this.actor.updateClient(arg0, to_candid_opt_n8(arg1), to_candid_opt_n74(arg2), to_candid_opt_n8(arg3), to_candid_opt_n8(arg4), to_candid_opt_n8(arg5), to_candid_opt_n8(arg6));
+        return from_candid_Result_n1(result);
+    }
+    async updateMatter(arg0: bigint, arg1: string | null, arg2: string | null, arg3: bigint | null, arg4: Some<Principal | null> | None, arg5: string | null): Promise<Result> {
+        const result = await this.actor.updateMatter(arg0, to_candid_opt_n8(arg1), to_candid_opt_n8(arg2), to_candid_opt_n73(arg3), to_candid_opt_n75(arg4), to_candid_opt_n8(arg5));
+        return from_candid_Result_n1(result);
     }
     async whoAmI(): Promise<Principal> {
         const result = await this.actor.whoAmI();
         return result;
     }
 }
-function from_candid_AuditEntry_n16(value: _AuditEntry): AuditEntry {
-    return from_candid_record_n17(value);
+function from_candid_AuditEntry_n57(value: _AuditEntry): AuditEntry {
+    return from_candid_record_n58(value);
 }
-function from_candid_AuditOutcome_n18(value: _AuditOutcome): AuditOutcome {
-    return from_candid_variant_n4(value);
+function from_candid_AuditOutcome_n59(value: _AuditOutcome): AuditOutcome {
+    return from_candid_variant_n2(value);
 }
-function from_candid_Result_1_n13(value: _Result_1): Result_1 {
-    return from_candid_variant_n14(value);
+function from_candid_ClientStatus_n22(value: _ClientStatus): ClientStatus {
+    return from_candid_variant_n23(value);
 }
-function from_candid_Result_n3(value: _Result): Result {
-    return from_candid_variant_n4(value);
+function from_candid_ClientType_n24(value: _ClientType): ClientType {
+    return from_candid_variant_n25(value);
 }
-function from_candid_Role_n6(value: _Role): Role {
-    return from_candid_variant_n7(value);
+function from_candid_Client_n20(value: _Client): Client {
+    return from_candid_record_n21(value);
 }
-function from_candid_UserRecord_n11(value: _UserRecord): UserRecord {
-    return from_candid_record_n12(value);
+function from_candid_DocumentSearchResult_n69(value: _DocumentSearchResult): DocumentSearchResult {
+    return from_candid_record_n70(value);
 }
-function from_candid_opt_n5(value: [] | [_Role]): Role | null {
-    return value.length === 0 ? null : from_candid_Role_n6(value[0]);
+function from_candid_DocumentStatus_n30(value: _DocumentStatus): DocumentStatus {
+    return from_candid_variant_n31(value);
 }
-function from_candid_opt_n8(value: [] | [Principal]): Principal | null {
+function from_candid_Document_n28(value: _Document): Document {
+    return from_candid_record_n29(value);
+}
+function from_candid_ExportManifest_n13(value: _ExportManifest): ExportManifest {
+    return from_candid_record_n14(value);
+}
+function from_candid_MatterStatus_n36(value: _MatterStatus): MatterStatus {
+    return from_candid_variant_n37(value);
+}
+function from_candid_Matter_n34(value: _Matter): Matter {
+    return from_candid_record_n35(value);
+}
+function from_candid_Result_1_n9(value: _Result_1): Result_1 {
+    return from_candid_variant_n10(value);
+}
+function from_candid_Result_2_n54(value: _Result_2): Result_2 {
+    return from_candid_variant_n55(value);
+}
+function from_candid_Result_3_n52(value: _Result_3): Result_3 {
+    return from_candid_variant_n53(value);
+}
+function from_candid_Result_4_n16(value: _Result_4): Result_4 {
+    return from_candid_variant_n17(value);
+}
+function from_candid_Result_5_n11(value: _Result_5): Result_5 {
+    return from_candid_variant_n12(value);
+}
+function from_candid_Result_n1(value: _Result): Result {
+    return from_candid_variant_n2(value);
+}
+function from_candid_Role_n40(value: _Role): Role {
+    return from_candid_variant_n41(value);
+}
+function from_candid_UserRecord_n50(value: _UserRecord): UserRecord {
+    return from_candid_record_n51(value);
+}
+function from_candid_opt_n15(value: [] | [Principal]): Principal | null {
     return value.length === 0 ? null : value[0];
 }
-function from_candid_record_n12(value: {
+function from_candid_opt_n18(value: [] | [Uint8Array]): Uint8Array | null {
+    return value.length === 0 ? null : value[0];
+}
+function from_candid_opt_n19(value: [] | [_Client]): Client | null {
+    return value.length === 0 ? null : from_candid_Client_n20(value[0]);
+}
+function from_candid_opt_n26(value: [] | [string]): string | null {
+    return value.length === 0 ? null : value[0];
+}
+function from_candid_opt_n27(value: [] | [_Document]): Document | null {
+    return value.length === 0 ? null : from_candid_Document_n28(value[0]);
+}
+function from_candid_opt_n32(value: [] | [_DocumentVersion]): DocumentVersion | null {
+    return value.length === 0 ? null : value[0];
+}
+function from_candid_opt_n33(value: [] | [_Matter]): Matter | null {
+    return value.length === 0 ? null : from_candid_Matter_n34(value[0]);
+}
+function from_candid_opt_n38(value: [] | [_Time]): Time | null {
+    return value.length === 0 ? null : value[0];
+}
+function from_candid_opt_n39(value: [] | [_Role]): Role | null {
+    return value.length === 0 ? null : from_candid_Role_n40(value[0]);
+}
+function from_candid_record_n14(value: {
+    totalVersions: bigint;
+    documents: Array<{
+        versionIds: Array<bigint>;
+        documentId: bigint;
+    }>;
+    matterIds: Array<bigint>;
+    totalMatters: bigint;
+    generatedAt: _Time;
+    generatedBy: Principal;
+    userPrincipals: Array<Principal>;
+    storageUsedBytes: bigint;
+    masterController: Principal;
+    totalClients: bigint;
+    storageBudgetBytes: bigint;
+    clientIds: Array<bigint>;
+    totalAuditEntries: bigint;
+    operationsPrincipal: [] | [Principal];
+    totalDocuments: bigint;
+}): {
+    totalVersions: bigint;
+    documents: Array<{
+        versionIds: Array<bigint>;
+        documentId: bigint;
+    }>;
+    matterIds: Array<bigint>;
+    totalMatters: bigint;
+    generatedAt: Time;
+    generatedBy: Principal;
+    userPrincipals: Array<Principal>;
+    storageUsedBytes: bigint;
+    masterController: Principal;
+    totalClients: bigint;
+    storageBudgetBytes: bigint;
+    clientIds: Array<bigint>;
+    totalAuditEntries: bigint;
+    operationsPrincipal?: Principal;
+    totalDocuments: bigint;
+} {
+    return {
+        totalVersions: value.totalVersions,
+        documents: value.documents,
+        matterIds: value.matterIds,
+        totalMatters: value.totalMatters,
+        generatedAt: value.generatedAt,
+        generatedBy: value.generatedBy,
+        userPrincipals: value.userPrincipals,
+        storageUsedBytes: value.storageUsedBytes,
+        masterController: value.masterController,
+        totalClients: value.totalClients,
+        storageBudgetBytes: value.storageBudgetBytes,
+        clientIds: value.clientIds,
+        totalAuditEntries: value.totalAuditEntries,
+        operationsPrincipal: record_opt_to_undefined(from_candid_opt_n15(value.operationsPrincipal)),
+        totalDocuments: value.totalDocuments
+    };
+}
+function from_candid_record_n21(value: {
+    id: bigint;
+    status: _ClientStatus;
+    clientType: _ClientType;
+    name: string;
+    createdAt: _Time;
+    createdBy: Principal;
+    primaryEmail: [] | [string];
+    notes: string;
+    lastModifiedAt: _Time;
+    lastModifiedBy: Principal;
+    primaryPhone: [] | [string];
+    identifier: [] | [string];
+}): {
+    id: bigint;
+    status: ClientStatus;
+    clientType: ClientType;
+    name: string;
+    createdAt: Time;
+    createdBy: Principal;
+    primaryEmail?: string;
+    notes: string;
+    lastModifiedAt: Time;
+    lastModifiedBy: Principal;
+    primaryPhone?: string;
+    identifier?: string;
+} {
+    return {
+        id: value.id,
+        status: from_candid_ClientStatus_n22(value.status),
+        clientType: from_candid_ClientType_n24(value.clientType),
+        name: value.name,
+        createdAt: value.createdAt,
+        createdBy: value.createdBy,
+        primaryEmail: record_opt_to_undefined(from_candid_opt_n26(value.primaryEmail)),
+        notes: value.notes,
+        lastModifiedAt: value.lastModifiedAt,
+        lastModifiedBy: value.lastModifiedBy,
+        primaryPhone: record_opt_to_undefined(from_candid_opt_n26(value.primaryPhone)),
+        identifier: record_opt_to_undefined(from_candid_opt_n26(value.identifier))
+    };
+}
+function from_candid_record_n29(value: {
+    id: bigint;
+    status: _DocumentStatus;
+    createdAt: _Time;
+    createdBy: Principal;
+    matterId: bigint;
+    currentVersionId: bigint;
+}): {
+    id: bigint;
+    status: DocumentStatus;
+    createdAt: Time;
+    createdBy: Principal;
+    matterId: bigint;
+    currentVersionId: bigint;
+} {
+    return {
+        id: value.id,
+        status: from_candid_DocumentStatus_n30(value.status),
+        createdAt: value.createdAt,
+        createdBy: value.createdBy,
+        matterId: value.matterId,
+        currentVersionId: value.currentVersionId
+    };
+}
+function from_candid_record_n35(value: {
+    id: bigint;
+    status: _MatterStatus;
+    title: string;
+    clientId: bigint;
+    createdAt: _Time;
+    createdBy: Principal;
+    description: string;
+    closedAt: [] | [_Time];
+    lastModifiedAt: _Time;
+    lastModifiedBy: Principal;
+    matterType: string;
+    assignedPartner: [] | [Principal];
+    openedAt: _Time;
+}): {
+    id: bigint;
+    status: MatterStatus;
+    title: string;
+    clientId: bigint;
+    createdAt: Time;
+    createdBy: Principal;
+    description: string;
+    closedAt?: Time;
+    lastModifiedAt: Time;
+    lastModifiedBy: Principal;
+    matterType: string;
+    assignedPartner?: Principal;
+    openedAt: Time;
+} {
+    return {
+        id: value.id,
+        status: from_candid_MatterStatus_n36(value.status),
+        title: value.title,
+        clientId: value.clientId,
+        createdAt: value.createdAt,
+        createdBy: value.createdBy,
+        description: value.description,
+        closedAt: record_opt_to_undefined(from_candid_opt_n38(value.closedAt)),
+        lastModifiedAt: value.lastModifiedAt,
+        lastModifiedBy: value.lastModifiedBy,
+        matterType: value.matterType,
+        assignedPartner: record_opt_to_undefined(from_candid_opt_n15(value.assignedPartner)),
+        openedAt: value.openedAt
+    };
+}
+function from_candid_record_n51(value: {
     role: _Role;
     addedAt: _Time;
     addedBy: Principal;
@@ -211,13 +818,13 @@ function from_candid_record_n12(value: {
     suspended: boolean;
 } {
     return {
-        role: from_candid_Role_n6(value.role),
+        role: from_candid_Role_n40(value.role),
         addedAt: value.addedAt,
         addedBy: value.addedBy,
         suspended: value.suspended
     };
 }
-function from_candid_record_n17(value: {
+function from_candid_record_n58(value: {
     id: bigint;
     action: string;
     target: [] | [Principal];
@@ -235,38 +842,96 @@ function from_candid_record_n17(value: {
     return {
         id: value.id,
         action: value.action,
-        target: record_opt_to_undefined(from_candid_opt_n8(value.target)),
+        target: record_opt_to_undefined(from_candid_opt_n15(value.target)),
         timestamp: value.timestamp,
         caller: value.caller,
-        outcome: from_candid_AuditOutcome_n18(value.outcome)
+        outcome: from_candid_AuditOutcome_n59(value.outcome)
     };
 }
-function from_candid_tuple_n10(value: [Principal, _UserRecord]): [Principal, UserRecord] {
+function from_candid_record_n70(value: {
+    currentVersion: _DocumentVersion;
+    document: _Document;
+}): {
+    currentVersion: DocumentVersion;
+    document: Document;
+} {
+    return {
+        currentVersion: value.currentVersion,
+        document: from_candid_Document_n28(value.document)
+    };
+}
+function from_candid_tuple_n49(value: [Principal, _UserRecord]): [Principal, UserRecord] {
     return [
         value[0],
-        from_candid_UserRecord_n11(value[1])
+        from_candid_UserRecord_n50(value[1])
     ];
 }
-function from_candid_variant_n14(value: {
-    ok: Array<_AuditEntry>;
+function from_candid_variant_n10(value: {
+    ok: bigint;
 } | {
     err: string;
 }): {
     __kind__: "ok";
-    ok: Array<AuditEntry>;
+    ok: bigint;
 } | {
     __kind__: "err";
     err: string;
 } {
     return "ok" in value ? {
         __kind__: "ok",
-        ok: from_candid_vec_n15(value.ok)
+        ok: value.ok
     } : "err" in value ? {
         __kind__: "err",
         err: value.err
     } : value;
 }
-function from_candid_variant_n4(value: {
+function from_candid_variant_n12(value: {
+    ok: _ExportManifest;
+} | {
+    err: string;
+}): {
+    __kind__: "ok";
+    ok: ExportManifest;
+} | {
+    __kind__: "err";
+    err: string;
+} {
+    return "ok" in value ? {
+        __kind__: "ok",
+        ok: from_candid_ExportManifest_n13(value.ok)
+    } : "err" in value ? {
+        __kind__: "err",
+        err: value.err
+    } : value;
+}
+function from_candid_variant_n17(value: {
+    ok: {
+        versionId: bigint;
+        sha256: Uint8Array;
+        documentId: bigint;
+    };
+} | {
+    err: string;
+}): {
+    __kind__: "ok";
+    ok: {
+        versionId: bigint;
+        sha256: Uint8Array;
+        documentId: bigint;
+    };
+} | {
+    __kind__: "err";
+    err: string;
+} {
+    return "ok" in value ? {
+        __kind__: "ok",
+        ok: value.ok
+    } : "err" in value ? {
+        __kind__: "err",
+        err: value.err
+    } : value;
+}
+function from_candid_variant_n2(value: {
     ok: null;
 } | {
     err: string;
@@ -285,7 +950,41 @@ function from_candid_variant_n4(value: {
         err: value.err
     } : value;
 }
-function from_candid_variant_n7(value: {
+function from_candid_variant_n23(value: {
+    Inactive: null;
+} | {
+    Active: null;
+}): ClientStatus {
+    return "Inactive" in value ? ClientStatus.Inactive : "Active" in value ? ClientStatus.Active : value;
+}
+function from_candid_variant_n25(value: {
+    Company: null;
+} | {
+    Individual: null;
+} | {
+    Other: null;
+}): ClientType {
+    return "Company" in value ? ClientType.Company : "Individual" in value ? ClientType.Individual : "Other" in value ? ClientType.Other : value;
+}
+function from_candid_variant_n31(value: {
+    Active: null;
+} | {
+    Deleted: null;
+}): DocumentStatus {
+    return "Active" in value ? DocumentStatus.Active : "Deleted" in value ? DocumentStatus.Deleted : value;
+}
+function from_candid_variant_n37(value: {
+    OnHold: null;
+} | {
+    Open: null;
+} | {
+    Closed: null;
+} | {
+    Archived: null;
+}): MatterStatus {
+    return "OnHold" in value ? MatterStatus.OnHold : "Open" in value ? MatterStatus.Open : "Closed" in value ? MatterStatus.Closed : "Archived" in value ? MatterStatus.Archived : value;
+}
+function from_candid_variant_n41(value: {
     Staff: null;
 } | {
     Associate: null;
@@ -294,16 +993,203 @@ function from_candid_variant_n7(value: {
 }): Role {
     return "Staff" in value ? Role.Staff : "Associate" in value ? Role.Associate : "Partner" in value ? Role.Partner : value;
 }
-function from_candid_vec_n15(value: Array<_AuditEntry>): Array<AuditEntry> {
-    return value.map((x)=>from_candid_AuditEntry_n16(x));
+function from_candid_variant_n53(value: {
+    ok: {
+        sha256: Uint8Array;
+        contentType: string;
+        filename: string;
+        chunkCount: bigint;
+        documentId: bigint;
+        sizeBytes: bigint;
+    };
+} | {
+    err: string;
+}): {
+    __kind__: "ok";
+    ok: {
+        sha256: Uint8Array;
+        contentType: string;
+        filename: string;
+        chunkCount: bigint;
+        documentId: bigint;
+        sizeBytes: bigint;
+    };
+} | {
+    __kind__: "err";
+    err: string;
+} {
+    return "ok" in value ? {
+        __kind__: "ok",
+        ok: value.ok
+    } : "err" in value ? {
+        __kind__: "err",
+        err: value.err
+    } : value;
 }
-function from_candid_vec_n9(value: Array<[Principal, _UserRecord]>): Array<[Principal, UserRecord]> {
-    return value.map((x)=>from_candid_tuple_n10(x));
+function from_candid_variant_n55(value: {
+    ok: Array<_AuditEntry>;
+} | {
+    err: string;
+}): {
+    __kind__: "ok";
+    ok: Array<AuditEntry>;
+} | {
+    __kind__: "err";
+    err: string;
+} {
+    return "ok" in value ? {
+        __kind__: "ok",
+        ok: from_candid_vec_n56(value.ok)
+    } : "err" in value ? {
+        __kind__: "err",
+        err: value.err
+    } : value;
 }
-function to_candid_Role_n1(value: Role): _Role {
-    return to_candid_variant_n2(value);
+function from_candid_vec_n42(value: Array<_Client>): Array<Client> {
+    return value.map((x)=>from_candid_Client_n20(x));
 }
-function to_candid_variant_n2(value: Role): {
+function from_candid_vec_n43(value: Array<_Document>): Array<Document> {
+    return value.map((x)=>from_candid_Document_n28(x));
+}
+function from_candid_vec_n47(value: Array<_Matter>): Array<Matter> {
+    return value.map((x)=>from_candid_Matter_n34(x));
+}
+function from_candid_vec_n48(value: Array<[Principal, _UserRecord]>): Array<[Principal, UserRecord]> {
+    return value.map((x)=>from_candid_tuple_n49(x));
+}
+function from_candid_vec_n56(value: Array<_AuditEntry>): Array<AuditEntry> {
+    return value.map((x)=>from_candid_AuditEntry_n57(x));
+}
+function from_candid_vec_n68(value: Array<_DocumentSearchResult>): Array<DocumentSearchResult> {
+    return value.map((x)=>from_candid_DocumentSearchResult_n69(x));
+}
+function to_candid_ClientFilter_n60(value: ClientFilter): _ClientFilter {
+    return to_candid_record_n61(value);
+}
+function to_candid_ClientStatus_n62(value: ClientStatus): _ClientStatus {
+    return to_candid_variant_n63(value);
+}
+function to_candid_ClientType_n6(value: ClientType): _ClientType {
+    return to_candid_variant_n7(value);
+}
+function to_candid_DocumentFilter_n64(value: DocumentFilter): _DocumentFilter {
+    return to_candid_record_n65(value);
+}
+function to_candid_DocumentStatus_n66(value: DocumentStatus): _DocumentStatus {
+    return to_candid_variant_n67(value);
+}
+function to_candid_MatterFilter_n71(value: MatterFilter): _MatterFilter {
+    return to_candid_record_n72(value);
+}
+function to_candid_MatterStatus_n45(value: MatterStatus): _MatterStatus {
+    return to_candid_variant_n46(value);
+}
+function to_candid_Role_n3(value: Role): _Role {
+    return to_candid_variant_n4(value);
+}
+function to_candid_opt_n44(value: MatterStatus | null): [] | [_MatterStatus] {
+    return value === null ? candid_none() : candid_some(to_candid_MatterStatus_n45(value));
+}
+function to_candid_opt_n5(value: Principal | null): [] | [Principal] {
+    return value === null ? candid_none() : candid_some(value);
+}
+function to_candid_opt_n73(value: bigint | null): [] | [bigint] {
+    return value === null ? candid_none() : candid_some(value);
+}
+function to_candid_opt_n74(value: ClientType | null): [] | [_ClientType] {
+    return value === null ? candid_none() : candid_some(to_candid_ClientType_n6(value));
+}
+function to_candid_opt_n75(value: Some<Principal | null> | None): [] | [[] | [Principal]] {
+    return isNone(value) ? candid_none() : candid_some(to_candid_opt_n5(unwrap(value)));
+}
+function to_candid_opt_n8(value: string | null): [] | [string] {
+    return value === null ? candid_none() : candid_some(value);
+}
+function to_candid_record_n61(value: {
+    createdBefore?: Time;
+    nameContains?: string;
+    clientType?: ClientType;
+    createdAfter?: Time;
+    statusFilter?: ClientStatus;
+    identifierContains?: string;
+}): {
+    createdBefore: [] | [_Time];
+    nameContains: [] | [string];
+    clientType: [] | [_ClientType];
+    createdAfter: [] | [_Time];
+    statusFilter: [] | [_ClientStatus];
+    identifierContains: [] | [string];
+} {
+    return {
+        createdBefore: value.createdBefore ? candid_some(value.createdBefore) : candid_none(),
+        nameContains: value.nameContains ? candid_some(value.nameContains) : candid_none(),
+        clientType: value.clientType ? candid_some(to_candid_ClientType_n6(value.clientType)) : candid_none(),
+        createdAfter: value.createdAfter ? candid_some(value.createdAfter) : candid_none(),
+        statusFilter: value.statusFilter ? candid_some(to_candid_ClientStatus_n62(value.statusFilter)) : candid_none(),
+        identifierContains: value.identifierContains ? candid_some(value.identifierContains) : candid_none()
+    };
+}
+function to_candid_record_n65(value: {
+    contentType?: string;
+    filenameContains?: string;
+    matterId?: bigint;
+    uploadedAfter?: Time;
+    statusFilter?: DocumentStatus;
+    uploadedBy?: Principal;
+    uploadedBefore?: Time;
+}): {
+    contentType: [] | [string];
+    filenameContains: [] | [string];
+    matterId: [] | [bigint];
+    uploadedAfter: [] | [_Time];
+    statusFilter: [] | [_DocumentStatus];
+    uploadedBy: [] | [Principal];
+    uploadedBefore: [] | [_Time];
+} {
+    return {
+        contentType: value.contentType ? candid_some(value.contentType) : candid_none(),
+        filenameContains: value.filenameContains ? candid_some(value.filenameContains) : candid_none(),
+        matterId: value.matterId ? candid_some(value.matterId) : candid_none(),
+        uploadedAfter: value.uploadedAfter ? candid_some(value.uploadedAfter) : candid_none(),
+        statusFilter: value.statusFilter ? candid_some(to_candid_DocumentStatus_n66(value.statusFilter)) : candid_none(),
+        uploadedBy: value.uploadedBy ? candid_some(value.uploadedBy) : candid_none(),
+        uploadedBefore: value.uploadedBefore ? candid_some(value.uploadedBefore) : candid_none()
+    };
+}
+function to_candid_record_n72(value: {
+    openedBefore?: Time;
+    clientId?: bigint;
+    closedAfter?: Time;
+    titleContains?: string;
+    closedBefore?: Time;
+    openedAfter?: Time;
+    statusFilter?: MatterStatus;
+    matterTypeContains?: string;
+    assignedPartner?: Principal;
+}): {
+    openedBefore: [] | [_Time];
+    clientId: [] | [bigint];
+    closedAfter: [] | [_Time];
+    titleContains: [] | [string];
+    closedBefore: [] | [_Time];
+    openedAfter: [] | [_Time];
+    statusFilter: [] | [_MatterStatus];
+    matterTypeContains: [] | [string];
+    assignedPartner: [] | [Principal];
+} {
+    return {
+        openedBefore: value.openedBefore ? candid_some(value.openedBefore) : candid_none(),
+        clientId: value.clientId ? candid_some(value.clientId) : candid_none(),
+        closedAfter: value.closedAfter ? candid_some(value.closedAfter) : candid_none(),
+        titleContains: value.titleContains ? candid_some(value.titleContains) : candid_none(),
+        closedBefore: value.closedBefore ? candid_some(value.closedBefore) : candid_none(),
+        openedAfter: value.openedAfter ? candid_some(value.openedAfter) : candid_none(),
+        statusFilter: value.statusFilter ? candid_some(to_candid_MatterStatus_n45(value.statusFilter)) : candid_none(),
+        matterTypeContains: value.matterTypeContains ? candid_some(value.matterTypeContains) : candid_none(),
+        assignedPartner: value.assignedPartner ? candid_some(value.assignedPartner) : candid_none()
+    };
+}
+function to_candid_variant_n4(value: Role): {
     Staff: null;
 } | {
     Associate: null;
@@ -316,6 +1202,62 @@ function to_candid_variant_n2(value: Role): {
         Associate: null
     } : value == Role.Partner ? {
         Partner: null
+    } : value;
+}
+function to_candid_variant_n46(value: MatterStatus): {
+    OnHold: null;
+} | {
+    Open: null;
+} | {
+    Closed: null;
+} | {
+    Archived: null;
+} {
+    return value == MatterStatus.OnHold ? {
+        OnHold: null
+    } : value == MatterStatus.Open ? {
+        Open: null
+    } : value == MatterStatus.Closed ? {
+        Closed: null
+    } : value == MatterStatus.Archived ? {
+        Archived: null
+    } : value;
+}
+function to_candid_variant_n63(value: ClientStatus): {
+    Inactive: null;
+} | {
+    Active: null;
+} {
+    return value == ClientStatus.Inactive ? {
+        Inactive: null
+    } : value == ClientStatus.Active ? {
+        Active: null
+    } : value;
+}
+function to_candid_variant_n67(value: DocumentStatus): {
+    Active: null;
+} | {
+    Deleted: null;
+} {
+    return value == DocumentStatus.Active ? {
+        Active: null
+    } : value == DocumentStatus.Deleted ? {
+        Deleted: null
+    } : value;
+}
+function to_candid_variant_n7(value: ClientType): {
+    Company: null;
+} | {
+    Individual: null;
+} | {
+    Other: null;
+} {
+    return value == ClientType.Company ? {
+        Company: null
+    } : value == ClientType.Individual ? {
+        Individual: null
+    } : value == ClientType.Other ? {
+        Other: null
     } : value;
 }
 export interface CreateActorOptions {

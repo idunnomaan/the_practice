@@ -9,18 +9,141 @@
 import { IDL } from '@icp-sdk/core/candid';
 
 export const idlFactory = ({ IDL }) => {
+  const Result = IDL.Variant({ 'ok' : IDL.Null, 'err' : IDL.Text });
   const Role = IDL.Variant({
     'Staff' : IDL.Null,
     'Associate' : IDL.Null,
     'Partner' : IDL.Null,
   });
-  const Result = IDL.Variant({ 'ok' : IDL.Null, 'err' : IDL.Text });
+  const ClientStatusCounts = IDL.Record({
+    'active' : IDL.Nat,
+    'inactive' : IDL.Nat,
+  });
+  const ClientType = IDL.Variant({
+    'Company' : IDL.Null,
+    'Individual' : IDL.Null,
+    'Other' : IDL.Null,
+  });
+  const Result_1 = IDL.Variant({ 'ok' : IDL.Nat, 'err' : IDL.Text });
   const Time = IDL.Int;
+  const ExportManifest = IDL.Record({
+    'totalVersions' : IDL.Nat,
+    'documents' : IDL.Vec(
+      IDL.Record({ 'versionIds' : IDL.Vec(IDL.Nat), 'documentId' : IDL.Nat })
+    ),
+    'matterIds' : IDL.Vec(IDL.Nat),
+    'totalMatters' : IDL.Nat,
+    'generatedAt' : Time,
+    'generatedBy' : IDL.Principal,
+    'userPrincipals' : IDL.Vec(IDL.Principal),
+    'storageUsedBytes' : IDL.Nat,
+    'masterController' : IDL.Principal,
+    'totalClients' : IDL.Nat,
+    'storageBudgetBytes' : IDL.Nat,
+    'clientIds' : IDL.Vec(IDL.Nat),
+    'totalAuditEntries' : IDL.Nat,
+    'operationsPrincipal' : IDL.Opt(IDL.Principal),
+    'totalDocuments' : IDL.Nat,
+  });
+  const Result_5 = IDL.Variant({ 'ok' : ExportManifest, 'err' : IDL.Text });
+  const DocumentStatusCounts = IDL.Record({
+    'deleted' : IDL.Nat,
+    'active' : IDL.Nat,
+  });
+  const Result_4 = IDL.Variant({
+    'ok' : IDL.Record({
+      'versionId' : IDL.Nat,
+      'sha256' : IDL.Vec(IDL.Nat8),
+      'documentId' : IDL.Nat,
+    }),
+    'err' : IDL.Text,
+  });
+  const ClientStatus = IDL.Variant({
+    'Inactive' : IDL.Null,
+    'Active' : IDL.Null,
+  });
+  const Client = IDL.Record({
+    'id' : IDL.Nat,
+    'status' : ClientStatus,
+    'clientType' : ClientType,
+    'name' : IDL.Text,
+    'createdAt' : Time,
+    'createdBy' : IDL.Principal,
+    'primaryEmail' : IDL.Opt(IDL.Text),
+    'notes' : IDL.Text,
+    'lastModifiedAt' : Time,
+    'lastModifiedBy' : IDL.Principal,
+    'primaryPhone' : IDL.Opt(IDL.Text),
+    'identifier' : IDL.Opt(IDL.Text),
+  });
+  const DocumentStatus = IDL.Variant({
+    'Active' : IDL.Null,
+    'Deleted' : IDL.Null,
+  });
+  const Document = IDL.Record({
+    'id' : IDL.Nat,
+    'status' : DocumentStatus,
+    'createdAt' : Time,
+    'createdBy' : IDL.Principal,
+    'matterId' : IDL.Nat,
+    'currentVersionId' : IDL.Nat,
+  });
+  const DocumentVersion = IDL.Record({
+    'versionId' : IDL.Nat,
+    'sha256' : IDL.Vec(IDL.Nat8),
+    'contentType' : IDL.Text,
+    'blob' : IDL.Vec(IDL.Nat8),
+    'filename' : IDL.Text,
+    'documentId' : IDL.Nat,
+    'sizeBytes' : IDL.Nat,
+    'uploadNotes' : IDL.Text,
+    'versionNumber' : IDL.Nat,
+    'uploadedAt' : Time,
+    'uploadedBy' : IDL.Principal,
+  });
+  const MatterStatus = IDL.Variant({
+    'OnHold' : IDL.Null,
+    'Open' : IDL.Null,
+    'Closed' : IDL.Null,
+    'Archived' : IDL.Null,
+  });
+  const Matter = IDL.Record({
+    'id' : IDL.Nat,
+    'status' : MatterStatus,
+    'title' : IDL.Text,
+    'clientId' : IDL.Nat,
+    'createdAt' : Time,
+    'createdBy' : IDL.Principal,
+    'description' : IDL.Text,
+    'closedAt' : IDL.Opt(Time),
+    'lastModifiedAt' : Time,
+    'lastModifiedBy' : IDL.Principal,
+    'matterType' : IDL.Text,
+    'assignedPartner' : IDL.Opt(IDL.Principal),
+    'openedAt' : Time,
+  });
   const UserRecord = IDL.Record({
     'role' : Role,
     'addedAt' : Time,
     'addedBy' : IDL.Principal,
     'suspended' : IDL.Bool,
+  });
+  const MatterStatusCounts = IDL.Record({
+    'closed' : IDL.Nat,
+    'open' : IDL.Nat,
+    'onHold' : IDL.Nat,
+    'archived' : IDL.Nat,
+  });
+  const Result_3 = IDL.Variant({
+    'ok' : IDL.Record({
+      'sha256' : IDL.Vec(IDL.Nat8),
+      'contentType' : IDL.Text,
+      'filename' : IDL.Text,
+      'chunkCount' : IDL.Nat,
+      'documentId' : IDL.Nat,
+      'sizeBytes' : IDL.Nat,
+    }),
+    'err' : IDL.Text,
   });
   const AuditOutcome = IDL.Variant({ 'ok' : IDL.Null, 'err' : IDL.Text });
   const AuditEntry = IDL.Record({
@@ -31,33 +154,192 @@ export const idlFactory = ({ IDL }) => {
     'caller' : IDL.Principal,
     'outcome' : AuditOutcome,
   });
-  const Result_1 = IDL.Variant({
+  const Result_2 = IDL.Variant({
     'ok' : IDL.Vec(AuditEntry),
     'err' : IDL.Text,
   });
+  const ClientFilter = IDL.Record({
+    'createdBefore' : IDL.Opt(Time),
+    'nameContains' : IDL.Opt(IDL.Text),
+    'clientType' : IDL.Opt(ClientType),
+    'createdAfter' : IDL.Opt(Time),
+    'statusFilter' : IDL.Opt(ClientStatus),
+    'identifierContains' : IDL.Opt(IDL.Text),
+  });
+  const DocumentFilter = IDL.Record({
+    'contentType' : IDL.Opt(IDL.Text),
+    'filenameContains' : IDL.Opt(IDL.Text),
+    'matterId' : IDL.Opt(IDL.Nat),
+    'uploadedAfter' : IDL.Opt(Time),
+    'statusFilter' : IDL.Opt(DocumentStatus),
+    'uploadedBy' : IDL.Opt(IDL.Principal),
+    'uploadedBefore' : IDL.Opt(Time),
+  });
+  const DocumentSearchResult = IDL.Record({
+    'currentVersion' : DocumentVersion,
+    'document' : Document,
+  });
+  const MatterFilter = IDL.Record({
+    'openedBefore' : IDL.Opt(Time),
+    'clientId' : IDL.Opt(IDL.Nat),
+    'closedAfter' : IDL.Opt(Time),
+    'titleContains' : IDL.Opt(IDL.Text),
+    'closedBefore' : IDL.Opt(Time),
+    'openedAfter' : IDL.Opt(Time),
+    'statusFilter' : IDL.Opt(MatterStatus),
+    'matterTypeContains' : IDL.Opt(IDL.Text),
+    'assignedPartner' : IDL.Opt(IDL.Principal),
+  });
   const ThePractice = IDL.Service({
+    'abandonUpload' : IDL.Func([IDL.Nat], [Result], []),
     'addUser' : IDL.Func([IDL.Principal, Role], [Result], []),
+    'appendChunk' : IDL.Func(
+        [IDL.Nat, IDL.Nat, IDL.Vec(IDL.Nat8)],
+        [Result],
+        [],
+      ),
+    'archiveMatter' : IDL.Func([IDL.Nat], [Result], []),
+    'assignPartnerToMatter' : IDL.Func(
+        [IDL.Nat, IDL.Opt(IDL.Principal)],
+        [Result],
+        [],
+      ),
+    'clientsByStatus' : IDL.Func([], [ClientStatusCounts], ['query']),
+    'closeMatter' : IDL.Func([IDL.Nat], [Result], []),
+    'createClient' : IDL.Func(
+        [
+          IDL.Text,
+          ClientType,
+          IDL.Opt(IDL.Text),
+          IDL.Opt(IDL.Text),
+          IDL.Opt(IDL.Text),
+          IDL.Text,
+        ],
+        [Result_1],
+        [],
+      ),
+    'createExportManifest' : IDL.Func([], [Result_5], []),
+    'createMatter' : IDL.Func(
+        [IDL.Text, IDL.Text, IDL.Nat, IDL.Opt(IDL.Principal), IDL.Text],
+        [Result_1],
+        [],
+      ),
+    'deactivateClient' : IDL.Func([IDL.Nat], [Result], []),
+    'deleteDocument' : IDL.Func([IDL.Nat], [Result], []),
+    'documentsByStatus' : IDL.Func([], [DocumentStatusCounts], ['query']),
+    'finalizeUpload' : IDL.Func([IDL.Nat], [Result_4], []),
+    'getChunk' : IDL.Func(
+        [IDL.Nat, IDL.Nat],
+        [IDL.Opt(IDL.Vec(IDL.Nat8))],
+        ['query'],
+      ),
+    'getClient' : IDL.Func([IDL.Nat], [IDL.Opt(Client)], ['query']),
+    'getClientCount' : IDL.Func([], [IDL.Nat], ['query']),
+    'getDocument' : IDL.Func([IDL.Nat], [IDL.Opt(Document)], ['query']),
+    'getDocumentCount' : IDL.Func([], [IDL.Nat], ['query']),
+    'getDocumentVersion' : IDL.Func(
+        [IDL.Nat],
+        [IDL.Opt(DocumentVersion)],
+        ['query'],
+      ),
     'getMasterController' : IDL.Func([], [IDL.Principal], ['query']),
+    'getMatter' : IDL.Func([IDL.Nat], [IDL.Opt(Matter)], ['query']),
+    'getMatterCount' : IDL.Func([], [IDL.Nat], ['query']),
     'getMyRole' : IDL.Func([], [IDL.Opt(Role)], ['query']),
     'getOperationsPrincipal' : IDL.Func(
         [],
         [IDL.Opt(IDL.Principal)],
         ['query'],
       ),
+    'getStorageBudget' : IDL.Func([], [IDL.Nat], ['query']),
+    'getStorageUsed' : IDL.Func([], [IDL.Nat], ['query']),
     'getUserCount' : IDL.Func([], [IDL.Nat], ['query']),
     'grantOperations' : IDL.Func([IDL.Principal], [Result], []),
+    'listClients' : IDL.Func(
+        [IDL.Nat, IDL.Nat, IDL.Bool],
+        [IDL.Vec(Client)],
+        ['query'],
+      ),
+    'listDocumentsByMatter' : IDL.Func(
+        [IDL.Nat, IDL.Nat, IDL.Nat, IDL.Bool],
+        [IDL.Vec(Document)],
+        ['query'],
+      ),
+    'listMatters' : IDL.Func(
+        [IDL.Nat, IDL.Nat, IDL.Opt(MatterStatus)],
+        [IDL.Vec(Matter)],
+        ['query'],
+      ),
+    'listMattersByClient' : IDL.Func(
+        [IDL.Nat, IDL.Nat, IDL.Nat, IDL.Opt(MatterStatus)],
+        [IDL.Vec(Matter)],
+        ['query'],
+      ),
     'listUsers' : IDL.Func(
         [],
         [IDL.Vec(IDL.Tuple(IDL.Principal, UserRecord))],
         ['query'],
       ),
-    'readAuditEntries' : IDL.Func([IDL.Nat, IDL.Nat], [Result_1], []),
+    'listVersions' : IDL.Func([IDL.Nat], [IDL.Vec(DocumentVersion)], ['query']),
+    'mattersByStatus' : IDL.Func([], [MatterStatusCounts], ['query']),
+    'prepareDocumentDownload' : IDL.Func([IDL.Nat], [Result_3], []),
+    'putMatterOnHold' : IDL.Func([IDL.Nat], [Result], []),
+    'reactivateClient' : IDL.Func([IDL.Nat], [Result], []),
+    'readAuditEntries' : IDL.Func([IDL.Nat, IDL.Nat], [Result_2], []),
     'removeUser' : IDL.Func([IDL.Principal], [Result], []),
+    'reopenMatter' : IDL.Func([IDL.Nat], [Result], []),
+    'resumeMatter' : IDL.Func([IDL.Nat], [Result], []),
     'revokeOperations' : IDL.Func([], [Result], []),
+    'searchClients' : IDL.Func(
+        [ClientFilter, IDL.Nat, IDL.Nat],
+        [IDL.Vec(Client)],
+        ['query'],
+      ),
+    'searchDocuments' : IDL.Func(
+        [DocumentFilter, IDL.Nat, IDL.Nat],
+        [IDL.Vec(DocumentSearchResult)],
+        ['query'],
+      ),
+    'searchMatters' : IDL.Func(
+        [MatterFilter, IDL.Nat, IDL.Nat],
+        [IDL.Vec(Matter)],
+        ['query'],
+      ),
+    'setStorageBudget' : IDL.Func([IDL.Nat], [Result], []),
     'setUserRole' : IDL.Func([IDL.Principal, Role], [Result], []),
+    'startUpload' : IDL.Func(
+        [IDL.Nat, IDL.Text, IDL.Text, IDL.Nat, IDL.Text, IDL.Opt(IDL.Nat)],
+        [Result_1],
+        [],
+      ),
     'suspendUser' : IDL.Func([IDL.Principal], [Result], []),
     'transferMasterController' : IDL.Func([IDL.Principal], [Result], []),
     'unsuspendUser' : IDL.Func([IDL.Principal], [Result], []),
+    'updateClient' : IDL.Func(
+        [
+          IDL.Nat,
+          IDL.Opt(IDL.Text),
+          IDL.Opt(ClientType),
+          IDL.Opt(IDL.Text),
+          IDL.Opt(IDL.Text),
+          IDL.Opt(IDL.Text),
+          IDL.Opt(IDL.Text),
+        ],
+        [Result],
+        [],
+      ),
+    'updateMatter' : IDL.Func(
+        [
+          IDL.Nat,
+          IDL.Opt(IDL.Text),
+          IDL.Opt(IDL.Text),
+          IDL.Opt(IDL.Nat),
+          IDL.Opt(IDL.Opt(IDL.Principal)),
+          IDL.Opt(IDL.Text),
+        ],
+        [Result],
+        [],
+      ),
     'whoAmI' : IDL.Func([], [IDL.Principal], ['query']),
   });
   

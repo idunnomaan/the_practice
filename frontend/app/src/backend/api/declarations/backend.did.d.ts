@@ -20,28 +20,252 @@ export interface AuditEntry {
 }
 export type AuditOutcome = { 'ok' : null } |
   { 'err' : string };
+export interface Client {
+  'id' : bigint,
+  'status' : ClientStatus,
+  'clientType' : ClientType,
+  'name' : string,
+  'createdAt' : Time,
+  'createdBy' : Principal,
+  'primaryEmail' : [] | [string],
+  'notes' : string,
+  'lastModifiedAt' : Time,
+  'lastModifiedBy' : Principal,
+  'primaryPhone' : [] | [string],
+  'identifier' : [] | [string],
+}
+export interface ClientFilter {
+  'createdBefore' : [] | [Time],
+  'nameContains' : [] | [string],
+  'clientType' : [] | [ClientType],
+  'createdAfter' : [] | [Time],
+  'statusFilter' : [] | [ClientStatus],
+  'identifierContains' : [] | [string],
+}
+export type ClientStatus = { 'Inactive' : null } |
+  { 'Active' : null };
+export interface ClientStatusCounts { 'active' : bigint, 'inactive' : bigint }
+export type ClientType = { 'Company' : null } |
+  { 'Individual' : null } |
+  { 'Other' : null };
+export interface Document {
+  'id' : bigint,
+  'status' : DocumentStatus,
+  'createdAt' : Time,
+  'createdBy' : Principal,
+  'matterId' : bigint,
+  'currentVersionId' : bigint,
+}
+export interface DocumentFilter {
+  'contentType' : [] | [string],
+  'filenameContains' : [] | [string],
+  'matterId' : [] | [bigint],
+  'uploadedAfter' : [] | [Time],
+  'statusFilter' : [] | [DocumentStatus],
+  'uploadedBy' : [] | [Principal],
+  'uploadedBefore' : [] | [Time],
+}
+export interface DocumentSearchResult {
+  'currentVersion' : DocumentVersion,
+  'document' : Document,
+}
+export type DocumentStatus = { 'Active' : null } |
+  { 'Deleted' : null };
+export interface DocumentStatusCounts { 'deleted' : bigint, 'active' : bigint }
+export interface DocumentVersion {
+  'versionId' : bigint,
+  'sha256' : Uint8Array,
+  'contentType' : string,
+  'blob' : Uint8Array,
+  'filename' : string,
+  'documentId' : bigint,
+  'sizeBytes' : bigint,
+  'uploadNotes' : string,
+  'versionNumber' : bigint,
+  'uploadedAt' : Time,
+  'uploadedBy' : Principal,
+}
+export interface ExportManifest {
+  'totalVersions' : bigint,
+  'documents' : Array<{ 'versionIds' : Array<bigint>, 'documentId' : bigint }>,
+  'matterIds' : Array<bigint>,
+  'totalMatters' : bigint,
+  'generatedAt' : Time,
+  'generatedBy' : Principal,
+  'userPrincipals' : Array<Principal>,
+  'storageUsedBytes' : bigint,
+  'masterController' : Principal,
+  'totalClients' : bigint,
+  'storageBudgetBytes' : bigint,
+  'clientIds' : Array<bigint>,
+  'totalAuditEntries' : bigint,
+  'operationsPrincipal' : [] | [Principal],
+  'totalDocuments' : bigint,
+}
+export interface Matter {
+  'id' : bigint,
+  'status' : MatterStatus,
+  'title' : string,
+  'clientId' : bigint,
+  'createdAt' : Time,
+  'createdBy' : Principal,
+  'description' : string,
+  'closedAt' : [] | [Time],
+  'lastModifiedAt' : Time,
+  'lastModifiedBy' : Principal,
+  'matterType' : string,
+  'assignedPartner' : [] | [Principal],
+  'openedAt' : Time,
+}
+export interface MatterFilter {
+  'openedBefore' : [] | [Time],
+  'clientId' : [] | [bigint],
+  'closedAfter' : [] | [Time],
+  'titleContains' : [] | [string],
+  'closedBefore' : [] | [Time],
+  'openedAfter' : [] | [Time],
+  'statusFilter' : [] | [MatterStatus],
+  'matterTypeContains' : [] | [string],
+  'assignedPartner' : [] | [Principal],
+}
+export type MatterStatus = { 'OnHold' : null } |
+  { 'Open' : null } |
+  { 'Closed' : null } |
+  { 'Archived' : null };
+export interface MatterStatusCounts {
+  'closed' : bigint,
+  'open' : bigint,
+  'onHold' : bigint,
+  'archived' : bigint,
+}
 export type Result = { 'ok' : null } |
   { 'err' : string };
-export type Result_1 = { 'ok' : Array<AuditEntry> } |
+export type Result_1 = { 'ok' : bigint } |
+  { 'err' : string };
+export type Result_2 = { 'ok' : Array<AuditEntry> } |
+  { 'err' : string };
+export type Result_3 = {
+    'ok' : {
+      'sha256' : Uint8Array,
+      'contentType' : string,
+      'filename' : string,
+      'chunkCount' : bigint,
+      'documentId' : bigint,
+      'sizeBytes' : bigint,
+    }
+  } |
+  { 'err' : string };
+export type Result_4 = {
+    'ok' : {
+      'versionId' : bigint,
+      'sha256' : Uint8Array,
+      'documentId' : bigint,
+    }
+  } |
+  { 'err' : string };
+export type Result_5 = { 'ok' : ExportManifest } |
   { 'err' : string };
 export type Role = { 'Staff' : null } |
   { 'Associate' : null } |
   { 'Partner' : null };
 export interface ThePractice {
+  'abandonUpload' : ActorMethod<[bigint], Result>,
   'addUser' : ActorMethod<[Principal, Role], Result>,
+  'appendChunk' : ActorMethod<[bigint, bigint, Uint8Array], Result>,
+  'archiveMatter' : ActorMethod<[bigint], Result>,
+  'assignPartnerToMatter' : ActorMethod<[bigint, [] | [Principal]], Result>,
+  'clientsByStatus' : ActorMethod<[], ClientStatusCounts>,
+  'closeMatter' : ActorMethod<[bigint], Result>,
+  'createClient' : ActorMethod<
+    [string, ClientType, [] | [string], [] | [string], [] | [string], string],
+    Result_1
+  >,
+  'createExportManifest' : ActorMethod<[], Result_5>,
+  'createMatter' : ActorMethod<
+    [string, string, bigint, [] | [Principal], string],
+    Result_1
+  >,
+  'deactivateClient' : ActorMethod<[bigint], Result>,
+  'deleteDocument' : ActorMethod<[bigint], Result>,
+  'documentsByStatus' : ActorMethod<[], DocumentStatusCounts>,
+  'finalizeUpload' : ActorMethod<[bigint], Result_4>,
+  'getChunk' : ActorMethod<[bigint, bigint], [] | [Uint8Array]>,
+  'getClient' : ActorMethod<[bigint], [] | [Client]>,
+  'getClientCount' : ActorMethod<[], bigint>,
+  'getDocument' : ActorMethod<[bigint], [] | [Document]>,
+  'getDocumentCount' : ActorMethod<[], bigint>,
+  'getDocumentVersion' : ActorMethod<[bigint], [] | [DocumentVersion]>,
   'getMasterController' : ActorMethod<[], Principal>,
+  'getMatter' : ActorMethod<[bigint], [] | [Matter]>,
+  'getMatterCount' : ActorMethod<[], bigint>,
   'getMyRole' : ActorMethod<[], [] | [Role]>,
   'getOperationsPrincipal' : ActorMethod<[], [] | [Principal]>,
+  'getStorageBudget' : ActorMethod<[], bigint>,
+  'getStorageUsed' : ActorMethod<[], bigint>,
   'getUserCount' : ActorMethod<[], bigint>,
   'grantOperations' : ActorMethod<[Principal], Result>,
+  'listClients' : ActorMethod<[bigint, bigint, boolean], Array<Client>>,
+  'listDocumentsByMatter' : ActorMethod<
+    [bigint, bigint, bigint, boolean],
+    Array<Document>
+  >,
+  'listMatters' : ActorMethod<
+    [bigint, bigint, [] | [MatterStatus]],
+    Array<Matter>
+  >,
+  'listMattersByClient' : ActorMethod<
+    [bigint, bigint, bigint, [] | [MatterStatus]],
+    Array<Matter>
+  >,
   'listUsers' : ActorMethod<[], Array<[Principal, UserRecord]>>,
-  'readAuditEntries' : ActorMethod<[bigint, bigint], Result_1>,
+  'listVersions' : ActorMethod<[bigint], Array<DocumentVersion>>,
+  'mattersByStatus' : ActorMethod<[], MatterStatusCounts>,
+  'prepareDocumentDownload' : ActorMethod<[bigint], Result_3>,
+  'putMatterOnHold' : ActorMethod<[bigint], Result>,
+  'reactivateClient' : ActorMethod<[bigint], Result>,
+  'readAuditEntries' : ActorMethod<[bigint, bigint], Result_2>,
   'removeUser' : ActorMethod<[Principal], Result>,
+  'reopenMatter' : ActorMethod<[bigint], Result>,
+  'resumeMatter' : ActorMethod<[bigint], Result>,
   'revokeOperations' : ActorMethod<[], Result>,
+  'searchClients' : ActorMethod<[ClientFilter, bigint, bigint], Array<Client>>,
+  'searchDocuments' : ActorMethod<
+    [DocumentFilter, bigint, bigint],
+    Array<DocumentSearchResult>
+  >,
+  'searchMatters' : ActorMethod<[MatterFilter, bigint, bigint], Array<Matter>>,
+  'setStorageBudget' : ActorMethod<[bigint], Result>,
   'setUserRole' : ActorMethod<[Principal, Role], Result>,
+  'startUpload' : ActorMethod<
+    [bigint, string, string, bigint, string, [] | [bigint]],
+    Result_1
+  >,
   'suspendUser' : ActorMethod<[Principal], Result>,
   'transferMasterController' : ActorMethod<[Principal], Result>,
   'unsuspendUser' : ActorMethod<[Principal], Result>,
+  'updateClient' : ActorMethod<
+    [
+      bigint,
+      [] | [string],
+      [] | [ClientType],
+      [] | [string],
+      [] | [string],
+      [] | [string],
+      [] | [string],
+    ],
+    Result
+  >,
+  'updateMatter' : ActorMethod<
+    [
+      bigint,
+      [] | [string],
+      [] | [string],
+      [] | [bigint],
+      [] | [[] | [Principal]],
+      [] | [string],
+    ],
+    Result
+  >,
   'whoAmI' : ActorMethod<[], Principal>,
 }
 export type Time = bigint;
