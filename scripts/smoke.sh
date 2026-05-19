@@ -923,6 +923,276 @@ RESULT=$(icp canister call backend getStorageBudget "()")
 check "L3: storageBudgetBytes = 50 GB default after upgrade" "53_687_091_200\|53687091200" "$RESULT"
 echo ""
 
+# ═══════════════════════════════════════════════════════════════════════════════
+# L4 Logic — search, dashboard counts, export — Steps 86–102
+# ═══════════════════════════════════════════════════════════════════════════════
+
+# ── Step 86: L4 setup — create "smith" test clients ──────────────────────────
+echo "Step 86: L4 setup — create clients for search tests (smith variants + identifier + inactive)"
+RESULT=$(icp canister call backend createClient \
+  "(\"Smith & Partners\", variant { Company }, null, null, null, \"\")")
+check "createClient 'Smith & Partners' ok" "ok" "$RESULT"
+SMITH_CLIENT_ID=$(echo "$RESULT" | python3 -c "import sys,re; m=re.search(r'(\d+)\s*:\s*nat',sys.stdin.read()); print(m.group(1) if m else '0')")
+RESULT=$(icp canister call backend createClient \
+  "(\"Smithson Trading\", variant { Company }, null, null, null, \"\")")
+check "createClient 'Smithson Trading' ok" "ok" "$RESULT"
+RESULT=$(icp canister call backend createClient \
+  "(\"smith Bros\", variant { Individual }, null, null, null, \"\")")
+check "createClient 'smith Bros' ok" "ok" "$RESULT"
+RESULT=$(icp canister call backend createClient \
+  "(\"Lotus Bank\", variant { Company }, null, null, opt \"NIC2025001\", \"\")")
+check "createClient 'Lotus Bank' (identifier NIC2025001) ok" "ok" "$RESULT"
+RESULT=$(icp canister call backend createClient \
+  "(\"Inactive Corp\", variant { Company }, null, null, null, \"\")")
+check "createClient 'Inactive Corp' ok" "ok" "$RESULT"
+INACT_CLIENT_ID=$(echo "$RESULT" | python3 -c "import sys,re; m=re.search(r'(\d+)\s*:\s*nat',sys.stdin.read()); print(m.group(1) if m else '0')")
+icp canister call backend deactivateClient "($INACT_CLIENT_ID : nat)" > /dev/null
+echo "  smith_client_id=$SMITH_CLIENT_ID  inact_client_id=$INACT_CLIENT_ID (deactivated)"
+echo ""
+
+# ── Step 87: L4 setup — matters + documents ───────────────────────────────────
+echo "Step 87: L4 setup — create smith matters; upload contract, alpha, beta docs"
+RESULT=$(icp canister call backend createMatter \
+  "(\"Smith Corporate Advisory\", \"Advisory\", $SMITH_CLIENT_ID : nat, null, \"\")")
+check "createMatter 'Smith Corporate Advisory' ok" "ok" "$RESULT"
+SMITH_MATTER1=$(echo "$RESULT" | python3 -c "import sys,re; m=re.search(r'(\d+)\s*:\s*nat',sys.stdin.read()); print(m.group(1) if m else '0')")
+RESULT=$(icp canister call backend createMatter \
+  "(\"Smith Tax Filing\", \"Tax\", $SMITH_CLIENT_ID : nat, opt (principal \"$PARTNER_PRINCIPAL\"), \"\")")
+check "createMatter 'Smith Tax Filing' (assigned partner) ok" "ok" "$RESULT"
+SMITH_MATTER2=$(echo "$RESULT" | python3 -c "import sys,re; m=re.search(r'(\d+)\s*:\s*nat',sys.stdin.read()); print(m.group(1) if m else '0')")
+# Close matter1 for dashboard Closed count
+icp canister call backend closeMatter "($SMITH_MATTER1 : nat)" > /dev/null
+echo "  smith_matter1=$SMITH_MATTER1 (Closed)  smith_matter2=$SMITH_MATTER2 (Open)"
+# Upload contract_review.pdf (as smoke-master, matter 2)
+CONTRACT_FILE=$(mktemp /tmp/tp_smoke_XXXXXX.bin)
+printf 'Contract review smoke test document.' > "$CONTRACT_FILE"
+CONTRACT_SIZE=$(wc -c < "$CONTRACT_FILE")
+CONTRACT_DATA=$(python3 -c "data=open('$CONTRACT_FILE','rb').read(); print('blob \"'+''.join(f'\\\\{b:02x}' for b in data)+'\"',end='')")
+RESULT=$(icp canister call backend startUpload \
+  "(2 : nat, \"contract_review.pdf\", \"application/pdf\", $CONTRACT_SIZE : nat, \"contract\", null)")
+check "startUpload contract_review.pdf ok" "ok" "$RESULT"
+CONTRACT_SID=$(echo "$RESULT" | grep -o '[0-9]*' | head -1)
+icp canister call backend appendChunk "($CONTRACT_SID : nat, 0 : nat, $CONTRACT_DATA)" > /dev/null
+CONTRACT_FIN=$(icp canister call backend finalizeUpload "($CONTRACT_SID : nat)")
+check "finalizeUpload contract_review.pdf ok" "ok" "$CONTRACT_FIN"
+rm -f "$CONTRACT_FILE"
+# Upload alpha.pdf (as smoke-doc-associate, matter 2 — for uploadedBy test + version-history test)
+ALPHA_FILE=$(mktemp /tmp/tp_smoke_XXXXXX.bin)
+printf 'alpha document content' > "$ALPHA_FILE"
+ALPHA_SIZE=$(wc -c < "$ALPHA_FILE")
+ALPHA_DATA=$(python3 -c "data=open('$ALPHA_FILE','rb').read(); print('blob \"'+''.join(f'\\\\{b:02x}' for b in data)+'\"',end='')")
+RESULT=$(icp canister call backend startUpload \
+  "(2 : nat, \"alpha.pdf\", \"application/pdf\", $ALPHA_SIZE : nat, \"alpha\", null)" \
+  --identity smoke-doc-associate)
+check "startUpload alpha.pdf (doc-associate) ok" "ok" "$RESULT"
+ALPHA_SID=$(echo "$RESULT" | grep -o '[0-9]*' | head -1)
+icp canister call backend appendChunk "($ALPHA_SID : nat, 0 : nat, $ALPHA_DATA)" \
+  --identity smoke-doc-associate > /dev/null
+ALPHA_FIN=$(icp canister call backend finalizeUpload "($ALPHA_SID : nat)" --identity smoke-doc-associate)
+check "finalizeUpload alpha.pdf ok" "ok" "$ALPHA_FIN"
+ALPHA_DOC_ID=$(echo "$ALPHA_FIN" | python3 -c "import sys,re; m=re.search(r'documentId\s*=\s*(\d+)',sys.stdin.read()); print(m.group(1) if m else '0')")
+rm -f "$ALPHA_FILE"
+# Upload beta.pdf as v2 of alpha doc (version-history: current version becomes beta)
+BETA_FILE=$(mktemp /tmp/tp_smoke_XXXXXX.bin)
+printf 'beta document content v2' > "$BETA_FILE"
+BETA_SIZE=$(wc -c < "$BETA_FILE")
+BETA_DATA=$(python3 -c "data=open('$BETA_FILE','rb').read(); print('blob \"'+''.join(f'\\\\{b:02x}' for b in data)+'\"',end='')")
+RESULT=$(icp canister call backend startUpload \
+  "(2 : nat, \"beta.pdf\", \"application/pdf\", $BETA_SIZE : nat, \"v2 beta\", opt ($ALPHA_DOC_ID : nat))" \
+  --identity smoke-doc-associate)
+check "startUpload beta.pdf v2 ok" "ok" "$RESULT"
+BETA_SID=$(echo "$RESULT" | grep -o '[0-9]*' | head -1)
+icp canister call backend appendChunk "($BETA_SID : nat, 0 : nat, $BETA_DATA)" \
+  --identity smoke-doc-associate > /dev/null
+BETA_FIN=$(icp canister call backend finalizeUpload "($BETA_SID : nat)" --identity smoke-doc-associate)
+check "finalizeUpload beta.pdf v2 ok" "ok" "$BETA_FIN"
+rm -f "$BETA_FILE"
+echo "  alpha_doc_id=$ALPHA_DOC_ID (current version is now beta.pdf)"
+echo ""
+
+# ── Step 88: searchClients — case-insensitive "smith" matches exactly 3 ──────
+echo "Step 88: searchClients — 'smith' nameContains: 3 results (case-insensitive)"
+RESULT=$(icp canister call backend searchClients \
+  "(record { nameContains = opt \"smith\" }, 0 : nat, 1000 : nat)")
+check "smith search finds 'Smith & Partners'" "Smith & Partners" "$RESULT"
+check "smith search finds 'Smithson Trading'" "Smithson Trading" "$RESULT"
+check "smith search finds 'smith Bros'" "smith Bros" "$RESULT"
+check_absent "smith search excludes 'Lotus Bank'" "Lotus Bank" "$RESULT"
+check_absent "smith search excludes 'Acme Holdings PLC'" "Acme" "$RESULT"
+echo ""
+
+# ── Step 89: searchClients — clientType, empty filter, statusFilter=Inactive ─
+echo "Step 89: searchClients — clientType=Company; empty filter; statusFilter=Inactive"
+RESULT=$(icp canister call backend searchClients \
+  "(record { clientType = opt variant { Company } }, 0 : nat, 1000 : nat)")
+check "Company filter returns Acme" "Acme" "$RESULT"
+check "Company filter returns Smith & Partners" "Smith & Partners" "$RESULT"
+check_absent "Company filter excludes smith Bros (Individual)" "smith Bros" "$RESULT"
+RESULT=$(icp canister call backend searchClients "(record {}, 0 : nat, 1000 : nat)")
+check "empty filter returns Acme (active)" "Acme" "$RESULT"
+check "empty filter returns smith Bros" "smith Bros" "$RESULT"
+check_absent "empty filter excludes Inactive Corp (deactivated)" "Inactive Corp" "$RESULT"
+RESULT=$(icp canister call backend searchClients \
+  "(record { statusFilter = opt variant { Inactive } }, 0 : nat, 1000 : nat)")
+check "Inactive filter returns Inactive Corp" "Inactive Corp" "$RESULT"
+check_absent "Inactive filter excludes Acme (Active)" "Acme" "$RESULT"
+echo ""
+
+# ── Step 90: searchClients — identifierContains; compound AND; createdAfter ──
+echo "Step 90: searchClients — identifierContains; compound AND filter; future createdAfter"
+RESULT=$(icp canister call backend searchClients \
+  "(record { identifierContains = opt \"NIC\" }, 0 : nat, 1000 : nat)")
+check "identifierContains 'NIC' returns Lotus Bank" "Lotus Bank" "$RESULT"
+check_absent "identifierContains 'NIC' excludes Smith & Partners (no identifier)" "Smith & Partners" "$RESULT"
+RESULT=$(icp canister call backend searchClients \
+  "(record { nameContains = opt \"smith\"; clientType = opt variant { Company } }, 0 : nat, 1000 : nat)")
+check "compound AND (smith+Company): Smith & Partners" "Smith & Partners" "$RESULT"
+check "compound AND (smith+Company): Smithson Trading" "Smithson Trading" "$RESULT"
+check_absent "compound AND excludes smith Bros (Individual)" "smith Bros" "$RESULT"
+RESULT=$(icp canister call backend searchClients \
+  "(record { createdAfter = opt (9_000_000_000_000_000_000 : int) }, 0 : nat, 1000 : nat)")
+check_absent "createdAfter far-future returns no clients" "name =" "$RESULT"
+echo ""
+
+# ── Step 91: searchMatters — titleContains; clientId filter ──────────────────
+echo "Step 91: searchMatters — titleContains 'smith'; clientId filter"
+RESULT=$(icp canister call backend searchMatters \
+  "(record { titleContains = opt \"smith\" }, 0 : nat, 1000 : nat)")
+check "searchMatters 'smith' finds Smith Corporate Advisory" "Smith Corporate Advisory" "$RESULT"
+check "searchMatters 'smith' finds Smith Tax Filing" "Smith Tax Filing" "$RESULT"
+check_absent "searchMatters 'smith' excludes Matter Two" "Matter Two" "$RESULT"
+RESULT=$(icp canister call backend searchMatters \
+  "(record { clientId = opt ($SMITH_CLIENT_ID : nat) }, 0 : nat, 1000 : nat)")
+check "clientId filter finds Smith Corporate Advisory" "Smith Corporate Advisory" "$RESULT"
+check "clientId filter finds Smith Tax Filing" "Smith Tax Filing" "$RESULT"
+check_absent "clientId filter excludes Matter Two (client 1)" "Matter Two" "$RESULT"
+echo ""
+
+# ── Step 92: searchMatters — assignedPartner; default excludes Archived; #Archived only ─
+echo "Step 92: searchMatters — assignedPartner filter; default excludes #Archived; Archived-only"
+RESULT=$(icp canister call backend searchMatters \
+  "(record { assignedPartner = opt (principal \"$PARTNER_PRINCIPAL\") }, 0 : nat, 1000 : nat)")
+check "assignedPartner filter finds Smith Tax Filing" "Smith Tax Filing" "$RESULT"
+check_absent "assignedPartner filter excludes unassigned matters" "Smith Corporate Advisory" "$RESULT"
+RESULT=$(icp canister call backend searchMatters "(record {}, 0 : nat, 1000 : nat)")
+check "default filter includes Matter Two (Open)" "Matter Two" "$RESULT"
+check_absent "default filter excludes Archived (Acme Litigation v1)" "Acme Litigation v1" "$RESULT"
+RESULT=$(icp canister call backend searchMatters \
+  "(record { statusFilter = opt variant { Archived } }, 0 : nat, 1000 : nat)")
+check "Archived filter returns Acme Litigation v1" "Acme Litigation v1" "$RESULT"
+check_absent "Archived filter excludes Matter Two (Open)" "Matter Two" "$RESULT"
+echo ""
+
+# ── Step 93: searchDocuments — filenameContains; contentType filter ───────────
+echo "Step 93: searchDocuments — filenameContains 'contract'; contentType filter"
+RESULT=$(icp canister call backend searchDocuments \
+  "(record { filenameContains = opt \"contract\" }, 0 : nat, 1000 : nat)")
+check "filenameContains 'contract' finds contract_review.pdf" "contract_review" "$RESULT"
+check_absent "filenameContains 'contract' excludes beta.pdf" "beta" "$RESULT"
+RESULT=$(icp canister call backend searchDocuments \
+  "(record { contentType = opt \"application/pdf\" }, 0 : nat, 1000 : nat)")
+check "contentType application/pdf returns contract_review" "contract_review" "$RESULT"
+check "contentType application/pdf returns beta" "beta" "$RESULT"
+echo ""
+
+# ── Step 94: searchDocuments — uploadedBy; version-history limitation ─────────
+echo "Step 94: searchDocuments — uploadedBy filter; version-history: search 'alpha' = 0 results"
+RESULT=$(icp canister call backend searchDocuments \
+  "(record { uploadedBy = opt (principal \"$DOC_ASSOC_PRINCIPAL\") }, 0 : nat, 1000 : nat)")
+check "uploadedBy=doc-associate finds beta.pdf (current version)" "beta" "$RESULT"
+check_absent "uploadedBy=doc-associate excludes contract_review (master uploaded)" "contract_review" "$RESULT"
+# SEC-INV-9 (L4): alpha.pdf was v1; current version is now beta.pdf → search "alpha" = empty
+RESULT=$(icp canister call backend searchDocuments \
+  "(record { filenameContains = opt \"alpha\" }, 0 : nat, 1000 : nat)")
+check_absent "version-history limitation: 'alpha' search empty (current=beta.pdf)" "alpha" "$RESULT"
+echo ""
+
+# ── Step 95: searchDocuments blob stripped; searchMatters pagination ───────────
+echo "Step 95: blob stripped in DocumentSearchResult; searchMatters pagination no-overlap"
+RESULT=$(icp canister call backend searchDocuments \
+  "(record { filenameContains = opt \"contract\" }, 0 : nat, 1000 : nat)")
+check "searchDocuments result contains currentVersion" "currentVersion" "$RESULT"
+check "blob field is stripped to empty in search result" '"blob" = blob ""' "$RESULT"
+# Pagination: two pages over non-Archived matters (2,3,4,5,6,7 = 6 total)
+PAGE1=$(icp canister call backend searchMatters "(record {}, 0 : nat, 2 : nat)")
+check "page 1 contains Matter Two" "Matter Two" "$PAGE1"
+PAGE1_LAST=$(echo "$PAGE1" | python3 -c "
+import sys, re
+ids = [int(m.group(1)) for m in re.finditer(r'\bid\s*=\s*(\d+)\s*:', sys.stdin.read())]
+print(max(ids) if ids else 0)
+")
+PAGE2=$(icp canister call backend searchMatters "(record {}, $PAGE1_LAST : nat, 2 : nat)")
+check "page 2 contains Matter Four" "Matter Four" "$PAGE2"
+check_absent "page 2 does not contain Matter Two (no overlap)" "Matter Two" "$PAGE2"
+echo ""
+
+# ── Step 96: mattersByStatus dashboard counts ─────────────────────────────────
+echo "Step 96: mattersByStatus — Open=5, OnHold=0, Closed=1, Archived=1"
+RESULT=$(icp canister call backend mattersByStatus "()")
+check "mattersByStatus returns open field" "open" "$RESULT"
+OPEN_C=$(echo "$RESULT" | python3 -c "import sys,re; m=re.search(r'open\s*=\s*(\d+)',sys.stdin.read()); print(m.group(1) if m else '?')")
+check "mattersByStatus open = 5" "5" "$OPEN_C"
+CLOSED_C=$(echo "$RESULT" | python3 -c "import sys,re; m=re.search(r'closed\s*=\s*(\d+)',sys.stdin.read()); print(m.group(1) if m else '?')")
+check "mattersByStatus closed = 1" "1" "$CLOSED_C"
+ARCH_C=$(echo "$RESULT" | python3 -c "import sys,re; m=re.search(r'archived\s*=\s*(\d+)',sys.stdin.read()); print(m.group(1) if m else '?')")
+check "mattersByStatus archived = 1" "1" "$ARCH_C"
+echo ""
+
+# ── Step 97: clientsByStatus + documentsByStatus ──────────────────────────────
+echo "Step 97: clientsByStatus (Active=7 Inactive=1); documentsByStatus (Active=5 Deleted=1)"
+RESULT=$(icp canister call backend clientsByStatus "()")
+ACT_C=$(echo "$RESULT" | python3 -c "import sys,re; m=re.search(r'active\s*=\s*(\d+)',sys.stdin.read()); print(m.group(1) if m else '?')")
+check "clientsByStatus active = 7" "7" "$ACT_C"
+INACT_C=$(echo "$RESULT" | python3 -c "import sys,re; m=re.search(r'inactive\s*=\s*(\d+)',sys.stdin.read()); print(m.group(1) if m else '?')")
+check "clientsByStatus inactive = 1" "1" "$INACT_C"
+RESULT=$(icp canister call backend documentsByStatus "()")
+DACT_C=$(echo "$RESULT" | python3 -c "import sys,re; m=re.search(r'active\s*=\s*(\d+)',sys.stdin.read()); print(m.group(1) if m else '?')")
+check "documentsByStatus active = 5" "5" "$DACT_C"
+DDEL_C=$(echo "$RESULT" | python3 -c "import sys,re; m=re.search(r'deleted\s*=\s*(\d+)',sys.stdin.read()); print(m.group(1) if m else '?')")
+check "documentsByStatus deleted = 1" "1" "$DDEL_C"
+echo ""
+
+# ── Step 98: createExportManifest — Partner success + manifest field verification ──
+echo "Step 98: createExportManifest — Partner success; manifest field verification"
+RESULT=$(icp canister call backend createExportManifest "()")
+check "createExportManifest returns ok" "ok" "$RESULT"
+check "manifest contains generatedBy" "generatedBy" "$RESULT"
+check "manifest contains masterController" "masterController" "$RESULT"
+check "manifest clientIds populated" "clientIds" "$RESULT"
+check "manifest matterIds populated" "matterIds" "$RESULT"
+check "manifest documents list present" "documents" "$RESULT"
+check "manifest userPrincipals populated" "userPrincipals" "$RESULT"
+MANIFEST_TC=$(echo "$RESULT" | python3 -c "import sys,re; m=re.search(r'totalClients\s*=\s*(\d+)',sys.stdin.read()); print(m.group(1) if m else '?')")
+check "manifest totalClients = 8 (all clients including inactive)" "8" "$MANIFEST_TC"
+MANIFEST_TM=$(echo "$RESULT" | python3 -c "import sys,re; m=re.search(r'totalMatters\s*=\s*(\d+)',sys.stdin.read()); print(m.group(1) if m else '?')")
+check "manifest totalMatters = 7" "7" "$MANIFEST_TM"
+echo ""
+
+# ── Step 99: createExportManifest — audit entry recorded ─────────────────────
+echo "Step 99: createExportManifest — audit entry action='createExportManifest' outcome=#ok"
+RESULT=$(icp canister call backend readAuditEntries "(0 : nat, 1000 : nat)")
+check "createExportManifest audit entry present" "createExportManifest" "$RESULT"
+echo ""
+
+# ── Step 100: createExportManifest — Associate rejected + auditErr ────────────
+echo "Step 100: createExportManifest — Associate (doc-associate) rejected; auditErr recorded"
+RESULT=$(icp canister call backend createExportManifest "()" --identity smoke-doc-associate)
+check "Associate createExportManifest returns err" "err" "$RESULT"
+check "Associate error is not authorized" "not authorized" "$RESULT"
+AUDIT=$(icp canister call backend readAuditEntries "(0 : nat, 1000 : nat)")
+check "Associate rejection auditErr entry recorded" "createExportManifest" "$AUDIT"
+echo ""
+
+# ── Step 101: createExportManifest — Staff + anonymous rejection ──────────────
+echo "Step 101: createExportManifest — Staff rejected; anonymous rejected"
+RESULT=$(icp canister call backend createExportManifest "()" --identity smoke-staff)
+check "Staff createExportManifest returns err" "err" "$RESULT"
+check "Staff error is not authorized" "not authorized" "$RESULT"
+ANON_RESULT=$(icp canister call backend createExportManifest "()" \
+  --identity anonymous 2>&1) || true
+check "anonymous createExportManifest rejected" "err\|Error\|anonymous\|not allowed" "$ANON_RESULT"
+echo ""
+
 # ── Summary ──────────────────────────────────────────────────────────────────
 echo "=== Results: $PASS passed, $FAIL failed ==="
 if [ "$FAIL" -gt 0 ]; then

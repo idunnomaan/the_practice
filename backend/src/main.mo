@@ -16,6 +16,8 @@ import Audit "./Audit";
 import ClientModule "./Client";
 import MatterModule "./Matter";
 import DocumentModule "./Document";
+import Search "./Search";
+import Export "./Export";
 
 shared(installer) persistent actor class ThePractice(
   masterControllerArg : Principal
@@ -34,6 +36,16 @@ shared(installer) persistent actor class ThePractice(
   type DocumentStatus = DocumentModule.DocumentStatus;
   type DocumentVersion = DocumentModule.DocumentVersion;
   type UploadSession = DocumentModule.UploadSession;
+
+  // L4 types
+  type ClientFilter = Search.ClientFilter;
+  type MatterFilter = Search.MatterFilter;
+  type DocumentFilter = Search.DocumentFilter;
+  type DocumentSearchResult = Search.DocumentSearchResult;
+  type MatterStatusCounts = Search.MatterStatusCounts;
+  type ClientStatusCounts = Search.ClientStatusCounts;
+  type DocumentStatusCounts = Search.DocumentStatusCounts;
+  type ExportManifest = Export.ExportManifest;
 
   // INV-1: anonymous principal cannot hold any identity — trap at install if anonymous
   assert not Principal.isAnonymous(masterControllerArg);
@@ -202,6 +214,12 @@ shared(installer) persistent actor class ThePractice(
       case (?arr) arr;
     };
     MutMap.add(versionsByDocument, Nat.compare, docId, Array.concat<Nat>(existing, [versionId]));
+  };
+
+  // L4 helper — returns version with blob stripped to empty Blob.
+  // Mirrors the L2b listVersions pattern; use getChunk for actual bytes.
+  func stripBlobFromVersion(v : DocumentVersion) : DocumentVersion {
+    { v with blob = "" }
   };
 
   // setStorageBudget is callable by master controller OR operations principal
@@ -1516,6 +1534,151 @@ shared(installer) persistent actor class ThePractice(
     storageBudgetBytes := newBudgetBytes;
     auditOk(caller, "setStorageBudget", null);
     #ok(())
+  };
+
+  // ── L4 Queries — search ──────────────────────────────────────────────────
+  // SEC-INV-1 (L4): trap on anonymous — queries cannot emit audit; trap is correct.
+  // SEC-INV-5 (L4): search is read-only over existing Maps; no state mutation.
+  // SEC-INV-6 (L4): limit clamped to min(limit, 1000).
+  // Searches not audited — consistent with listClients/listMatters (spec §2 Q5).
+
+  public query ({ caller }) func searchClients(filter : ClientFilter, after : Nat, limit : Nat) : async [Client] {
+    switch (Auth.requireAuthenticated(caller)) { case (#err(_)) assert false; case (#ok) {} };
+    let cap = if (limit > 1000) 1000 else limit;
+    let base = MutMap.entriesFrom(clients, Nat.compare, after + 1);
+    let matched = Iter.filter(base, func((_, c) : (Nat, Client)) : Bool {
+      Search.matchesClientFilter(c, filter)
+    });
+    Iter.toArray(Iter.map(Iter.take(matched, cap), func((_, c) : (Nat, Client)) : Client { c }))
+  };
+
+  public query ({ caller }) func searchMatters(filter : MatterFilter, after : Nat, limit : Nat) : async [Matter] {
+    switch (Auth.requireAuthenticated(caller)) { case (#err(_)) assert false; case (#ok) {} };
+    let cap = if (limit > 1000) 1000 else limit;
+    let base = MutMap.entriesFrom(matters, Nat.compare, after + 1);
+    let matched = Iter.filter(base, func((_, m) : (Nat, Matter)) : Bool {
+      Search.matchesMatterFilter(m, filter)
+    });
+    Iter.toArray(Iter.map(Iter.take(matched, cap), func((_, m) : (Nat, Matter)) : Matter { m }))
+  };
+
+  // SEC-INV-9 (L4): matches against currentVersion only — never searches historical versions.
+  // A document whose current version does not match the filter is excluded even if an older
+  // version would have matched. See spec §2 derived decisions and §6 invariant 9.
+  public query ({ caller }) func searchDocuments(filter : DocumentFilter, after : Nat, limit : Nat) : async [DocumentSearchResult] {
+    switch (Auth.requireAuthenticated(caller)) { case (#err(_)) assert false; case (#ok) {} };
+    let cap = if (limit > 1000) 1000 else limit;
+    let base = MutMap.entriesFrom(documents, Nat.compare, after + 1);
+    let matched = Iter.filterMap<(Nat, Document), DocumentSearchResult>(base,
+      func((_, d) : (Nat, Document)) : ?DocumentSearchResult {
+        switch (MutMap.get(documentVersions, Nat.compare, d.currentVersionId)) {
+          case null null;
+          case (?v) {
+            if (Search.matchesDocumentFilter(d, v, filter))
+              ?{ document = d; currentVersion = stripBlobFromVersion(v) }
+            else null
+          };
+        };
+      }
+    );
+    Iter.toArray(Iter.take(matched, cap))
+  };
+
+  // ── L4 Queries — dashboard counts ────────────────────────────────────────
+  // Single-pass O(n) counts; not cached. SEC-INV-1: trap on anonymous.
+
+  public query ({ caller }) func mattersByStatus() : async MatterStatusCounts {
+    switch (Auth.requireAuthenticated(caller)) { case (#err(_)) assert false; case (#ok) {} };
+    var open = 0; var onHold = 0; var closed = 0; var archived = 0;
+    for ((_, m) in MutMap.entries(matters)) {
+      switch (m.status) {
+        case (#Open)     { open     += 1 };
+        case (#OnHold)   { onHold   += 1 };
+        case (#Closed)   { closed   += 1 };
+        case (#Archived) { archived += 1 };
+      };
+    };
+    { open; onHold; closed; archived }
+  };
+
+  public query ({ caller }) func clientsByStatus() : async ClientStatusCounts {
+    switch (Auth.requireAuthenticated(caller)) { case (#err(_)) assert false; case (#ok) {} };
+    var active = 0; var inactive = 0;
+    for ((_, c) in MutMap.entries(clients)) {
+      switch (c.status) {
+        case (#Active)   { active   += 1 };
+        case (#Inactive) { inactive += 1 };
+      };
+    };
+    { active; inactive }
+  };
+
+  public query ({ caller }) func documentsByStatus() : async DocumentStatusCounts {
+    switch (Auth.requireAuthenticated(caller)) { case (#err(_)) assert false; case (#ok) {} };
+    var active = 0; var deleted = 0;
+    for ((_, d) in MutMap.entries(documents)) {
+      switch (d.status) {
+        case (#Active)  { active  += 1 };
+        case (#Deleted) { deleted += 1 };
+      };
+    };
+    { active; deleted }
+  };
+
+  // ── L4 Update — export ───────────────────────────────────────────────────
+  // SEC-INV-3 (L4): Partner role required. Operations principal has no user role
+  //                 per L1, so requireRole fails — cannot export.
+  // SEC-INV-4 (L4): exactly one audit entry per call (auditOk on success, auditErr on failure).
+  // SEC-INV-5 (L4): read-only over all L1-L2b Maps; only side effect is the audit append.
+  // SEC-INV-11 (L4): update call (not query) — required to emit the audit entry.
+
+  public shared ({ caller }) func createExportManifest() : async Result.Result<ExportManifest, Text> {
+    switch (Auth.requireAuthenticated(caller)) {
+      case (#err(e)) { auditErr(caller, "createExportManifest", null, e); return #err(e) };
+      case (#ok) {};
+    };
+    // SEC-INV-3 (L4): Partner only; operations principal has no user role per L1
+    switch (requireRole(caller, #Partner)) {
+      case (#err(e)) { auditErr(caller, "createExportManifest", null, e); return #err(e) };
+      case (#ok) {};
+    };
+    let clientIds = Iter.toArray(
+      Iter.map(MutMap.entries(clients), func((id, _) : (Nat, Client)) : Nat { id })
+    );
+    let matterIds = Iter.toArray(
+      Iter.map(MutMap.entries(matters), func((id, _) : (Nat, Matter)) : Nat { id })
+    );
+    let docEntries = Iter.toArray(
+      Iter.map(MutMap.entries(documents), func((id, _) : (Nat, Document)) : { documentId : Nat; versionIds : [Nat] } {
+        let vids = switch (MutMap.get(versionsByDocument, Nat.compare, id)) {
+          case null   [];
+          case (?arr) arr;
+        };
+        { documentId = id; versionIds = vids }
+      })
+    );
+    let userPrincipals = Iter.toArray(
+      Iter.map(Map.entries(users), func((p, _) : (Principal, UserRecord)) : Principal { p })
+    );
+    let manifest : ExportManifest = {
+      generatedAt           = Time.now();
+      generatedBy           = caller;
+      totalClients          = MutMap.size(clients);
+      totalMatters          = MutMap.size(matters);
+      totalDocuments        = MutMap.size(documents);
+      totalVersions         = MutMap.size(documentVersions);
+      totalAuditEntries     = nextAuditId - 1;  // nextAuditId is 1-indexed; -1 gives count
+      storageUsedBytes      = totalStorageUsedBytes;
+      storageBudgetBytes    = storageBudgetBytes;
+      masterController      = masterController;
+      operationsPrincipal   = operationsPrincipal;
+      clientIds;
+      matterIds;
+      documents             = docEntries;
+      userPrincipals;
+    };
+    auditOk(caller, "createExportManifest", null);
+    #ok(manifest)
   };
 
   // ── L5 Audit read ─────────────────────────────────────────────────────────

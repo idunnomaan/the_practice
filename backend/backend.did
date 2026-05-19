@@ -14,13 +14,16 @@ type ThePractice =
     (Result);
    archiveMatter: (id: nat) -> (Result);
    assignPartnerToMatter: (id: nat, partner: opt principal) -> (Result);
+   clientsByStatus: () -> (ClientStatusCounts) query;
    closeMatter: (id: nat) -> (Result);
    createClient: (name: text, clientType: ClientType, primaryEmail: opt text,
     primaryPhone: opt text, identifier: opt text, notes: text) -> (Result_1);
+   createExportManifest: () -> (Result_5);
    createMatter: (title: text, matterType: text, clientId: nat,
     assignedPartner: opt principal, description: text) -> (Result_1);
    deactivateClient: (id: nat) -> (Result);
    deleteDocument: (documentId: nat) -> (Result);
+   documentsByStatus: () -> (DocumentStatusCounts) query;
    finalizeUpload: (sessionId: nat) -> (Result_4);
    getChunk: (versionId: nat, chunkIndex: nat) -> (opt blob) query;
    getClient: (id: nat) -> (opt Client) query;
@@ -50,6 +53,7 @@ type ThePractice =
                            UserRecord;
                          }) query;
    listVersions: (documentId: nat) -> (vec DocumentVersion) query;
+   mattersByStatus: () -> (MatterStatusCounts) query;
    prepareDocumentDownload: (versionId: nat) -> (Result_3);
    putMatterOnHold: (id: nat) -> (Result);
    reactivateClient: (id: nat) -> (Result);
@@ -58,6 +62,12 @@ type ThePractice =
    reopenMatter: (id: nat) -> (Result);
    resumeMatter: (id: nat) -> (Result);
    revokeOperations: () -> (Result);
+   searchClients: (filter: ClientFilter, after: nat, limit: nat) ->
+    (vec Client) query;
+   searchDocuments: (filter: DocumentFilter, after: nat, limit: nat) ->
+    (vec DocumentSearchResult) query;
+   searchMatters: (filter: MatterFilter, after: nat, limit: nat) ->
+    (vec Matter) query;
    setStorageBudget: (newBudgetBytes: nat) -> (Result);
    setUserRole: (p: principal, role: Role) -> (Result);
    startUpload: (matterId: nat, filename: text, contentType: text,
@@ -79,6 +89,11 @@ type Role =
    Associate;
    Partner;
    Staff;
+ };
+type Result_5 = 
+ variant {
+   err: text;
+   ok: ExportManifest;
  };
 type Result_4 = 
  variant {
@@ -117,12 +132,31 @@ type Result =
    err: text;
    ok;
  };
+type MatterStatusCounts = 
+ record {
+   archived: nat;
+   closed: nat;
+   onHold: nat;
+   open: nat;
+ };
 type MatterStatus = 
  variant {
    Archived;
    Closed;
    OnHold;
    Open;
+ };
+type MatterFilter = 
+ record {
+   assignedPartner: opt principal;
+   clientId: opt nat;
+   closedAfter: opt Time;
+   closedBefore: opt Time;
+   matterTypeContains: opt text;
+   openedAfter: opt Time;
+   openedBefore: opt Time;
+   statusFilter: opt MatterStatus;
+   titleContains: opt text;
  };
 type Matter = 
  record {
@@ -140,6 +174,27 @@ type Matter =
    status: MatterStatus;
    title: text;
  };
+type ExportManifest = 
+ record {
+   clientIds: vec nat;
+   documents: vec record {
+                    documentId: nat;
+                    versionIds: vec nat;
+                  };
+   generatedAt: Time;
+   generatedBy: principal;
+   masterController: principal;
+   matterIds: vec nat;
+   operationsPrincipal: opt principal;
+   storageBudgetBytes: nat;
+   storageUsedBytes: nat;
+   totalAuditEntries: nat;
+   totalClients: nat;
+   totalDocuments: nat;
+   totalMatters: nat;
+   totalVersions: nat;
+   userPrincipals: vec principal;
+ };
 type DocumentVersion = 
  record {
    "blob": blob;
@@ -154,10 +209,30 @@ type DocumentVersion =
    versionId: nat;
    versionNumber: nat;
  };
+type DocumentStatusCounts = 
+ record {
+   active: nat;
+   deleted: nat;
+ };
 type DocumentStatus = 
  variant {
    Active;
    Deleted;
+ };
+type DocumentSearchResult = 
+ record {
+   currentVersion: DocumentVersion;
+   document: Document;
+ };
+type DocumentFilter = 
+ record {
+   contentType: opt text;
+   filenameContains: opt text;
+   matterId: opt nat;
+   statusFilter: opt DocumentStatus;
+   uploadedAfter: opt Time;
+   uploadedBefore: opt Time;
+   uploadedBy: opt principal;
  };
 type Document = 
  record {
@@ -174,10 +249,24 @@ type ClientType =
    Individual;
    Other;
  };
+type ClientStatusCounts = 
+ record {
+   active: nat;
+   inactive: nat;
+ };
 type ClientStatus = 
  variant {
    Active;
    Inactive;
+ };
+type ClientFilter = 
+ record {
+   clientType: opt ClientType;
+   createdAfter: opt Time;
+   createdBefore: opt Time;
+   identifierContains: opt text;
+   nameContains: opt text;
+   statusFilter: opt ClientStatus;
  };
 type Client = 
  record {
