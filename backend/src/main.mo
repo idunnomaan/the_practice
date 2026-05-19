@@ -38,6 +38,14 @@ shared(installer) persistent actor class ThePractice(
   // INV-1: anonymous principal cannot hold any identity — trap at install if anonymous
   assert not Principal.isAnonymous(masterControllerArg);
 
+  // PERSISTENCE CONTRACT (L3)
+  // Every let/var field on this actor persists across upgrades automatically.
+  // Guaranteed by the `persistent actor` declaration + Enhanced Orthogonal
+  // Persistence (EOP). EOP serialises the full actor heap including large
+  // Blob values. No pre_upgrade/post_upgrade hooks needed or permitted —
+  // a trapping hook permanently bricks the canister.
+  // See PERSISTENCE.md. Upgrade proof: scripts/smoke.sh Steps 74–85.
+
   var masterController : Principal = masterControllerArg;
   var operationsPrincipal : ?Principal = null;
   // INV-2: master controller is always a registered Partner while installed
