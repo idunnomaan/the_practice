@@ -22,6 +22,7 @@ export default function ClientDetailPage() {
   const [clientType, setClientType] = useState<ClientType>(ClientType.Individual);
   const [email, setEmail] = useState("");
   const [phone, setPhone] = useState("");
+  const [identifier, setIdentifier] = useState("");
   const [notes, setNotes] = useState("");
 
   async function load() {
@@ -36,6 +37,7 @@ export default function ClientDetailPage() {
     setClientType(c.clientType);
     setEmail(c.primaryEmail ?? "");
     setPhone(c.primaryPhone ?? "");
+    setIdentifier(c.identifier ?? "");
     setNotes(c.notes);
   }
 
@@ -48,7 +50,7 @@ export default function ClientDetailPage() {
     setError(null);
     const result = await updateClient(
       client.id, name.trim() || null, clientType,
-      email.trim() || null, phone.trim() || null, null, notes.trim() || null,
+      email.trim() || null, phone.trim() || null, identifier.trim() || null, notes.trim() || null,
     );
     setSubmitting(false);
     if (!result) return;
@@ -88,6 +90,7 @@ export default function ClientDetailPage() {
   return (
     <div style={{ maxWidth: 640 }}>
       <h1 style={{ marginTop: 0 }}>{client.name}</h1>
+      <p style={{ color: "#666", fontSize: "0.85rem", marginTop: "-0.5rem" }}>{"CLT-" + String(client.id).padStart(4, "0")}</p>
       <p><strong>Status:</strong> {client.status} &nbsp;|&nbsp; <strong>Type:</strong> {client.clientType}</p>
 
       {error && <ErrorMessage message={error} onDismiss={() => setError(null)} />}
@@ -124,6 +127,7 @@ export default function ClientDetailPage() {
           </label>
           <label>Email<br /><input value={email} onChange={e => setEmail(e.target.value)} style={inputStyle} type="email" /></label>
           <label>Phone<br /><input value={phone} onChange={e => setPhone(e.target.value)} style={inputStyle} /></label>
+          <label>Identifier (NIC / Reg No)<br /><input value={identifier} onChange={e => setIdentifier(e.target.value)} style={inputStyle} /></label>
           <label>Notes<br /><textarea value={notes} onChange={e => setNotes(e.target.value)} style={{ ...inputStyle, height: 80 }} /></label>
           <div style={{ display: "flex", gap: "0.5rem" }}>
             <button type="submit" disabled={submitting} style={btnStyle}>{submitting ? "Saving…" : "Save"}</button>

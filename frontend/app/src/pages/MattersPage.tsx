@@ -5,6 +5,10 @@ import { MatterStatus } from "../backend/api/backend";
 import LoadingSpinner from "../components/LoadingSpinner";
 import ErrorMessage from "../components/ErrorMessage";
 
+function fmtClientId(id: bigint): string {
+  return "CLT-" + String(id).padStart(4, "0");
+}
+
 export default function MattersPage() {
   const { matters, loading, error, load, createMatter } = useMatters();
 
@@ -101,7 +105,7 @@ export default function MattersPage() {
               <td style={tdStyle}>{m.title}</td>
               <td style={tdStyle}>{m.matterType || "—"}</td>
               <td style={tdStyle}>{m.status}</td>
-              <td style={tdStyle}>{String(m.clientId)}</td>
+              <td style={tdStyle}>{fmtClientId(m.clientId)}</td>
               <td style={tdStyle}>
                 <Link to={`/matters/${m.id}`}>View</Link>
                 {" · "}

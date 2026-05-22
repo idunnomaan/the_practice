@@ -5,6 +5,10 @@ import { ClientType } from "../backend/api/backend";
 import LoadingSpinner from "../components/LoadingSpinner";
 import ErrorMessage from "../components/ErrorMessage";
 
+function fmtClientId(id: bigint): string {
+  return "CLT-" + String(id).padStart(4, "0");
+}
+
 export default function ClientsPage() {
   const { clients, loading, error, load, createClient } = useClients();
 
@@ -90,7 +94,7 @@ export default function ClientsPage() {
         <tbody>
           {clients.map(c => (
             <tr key={String(c.id)} style={{ borderBottom: "1px solid #eee" }}>
-              <td style={tdStyle}>{String(c.id)}</td>
+              <td style={tdStyle}>{fmtClientId(c.id)}</td>
               <td style={tdStyle}>{c.name}</td>
               <td style={tdStyle}>{c.clientType}</td>
               <td style={tdStyle}>{c.status}</td>
