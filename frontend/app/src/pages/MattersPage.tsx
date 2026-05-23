@@ -9,6 +9,17 @@ function fmtClientId(id: bigint): string {
   return "CLT-" + String(id).padStart(4, "0");
 }
 
+function statusBadge(status: string) {
+  const cls =
+    status === "Open"     ? "badge badge-open"   :
+    status === "OnHold"   ? "badge badge-hold"   :
+    status === "Closed"   ? "badge badge-closed" :
+                            "badge badge-archived";
+  const label =
+    status === "OnHold" ? "On hold" : status;
+  return <span className={cls}>{label}</span>;
+}
+
 export default function MattersPage() {
   const { matters, loading, error, load, createMatter } = useMatters();
 
@@ -52,16 +63,22 @@ export default function MattersPage() {
 
   return (
     <div>
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "1rem" }}>
-        <h1 style={{ margin: 0 }}>Matters</h1>
-        <button onClick={() => setShowForm(!showForm)} style={btnStyle}>
-          {showForm ? "Cancel" : "Create Matter"}
+      <div className="page-header">
+        <div className="page-title">Matters</div>
+        <button className="add-btn" onClick={() => setShowForm(!showForm)}>
+          <i className="ti ti-plus" />
+          {showForm ? "Cancel" : "New matter"}
         </button>
       </div>
 
-      <div style={{ marginBottom: "1rem" }}>
-        <label>Filter by status: </label>
-        <select value={statusFilter ?? ""} onChange={e => setStatusFilter(e.target.value ? e.target.value as MatterStatus : null)} style={{ padding: "0.3rem" }}>
+      <div className="filter-bar">
+        <span>Status:</span>
+        <select
+          className="tp-input"
+          style={{ width: "auto", padding: "5px 10px" }}
+          value={statusFilter ?? ""}
+          onChange={e => setStatusFilter(e.target.value ? e.target.value as MatterStatus : null)}
+        >
           <option value="">All</option>
           <option value={MatterStatus.Open}>Open</option>
           <option value={MatterStatus.OnHold}>On Hold</option>
@@ -71,59 +88,67 @@ export default function MattersPage() {
       </div>
 
       {showForm && (
-        <form onSubmit={(e) => { void handleCreate(e); }} style={formStyle}>
+        <form className="tp-form" onSubmit={(e) => { void handleCreate(e); }}>
           {formError && <ErrorMessage message={formError} onDismiss={() => setFormError(null)} />}
-          <label>Title *<br /><input value={title} onChange={e => setTitle(e.target.value)} style={inputStyle} required /></label>
-          <label>Matter Type<br /><input value={matterType} onChange={e => setMatterType(e.target.value)} style={inputStyle} placeholder="e.g. Commercial Litigation" /></label>
-          <label>Client ID *<br /><input value={clientId} onChange={e => setClientId(e.target.value)} style={inputStyle} type="number" required /></label>
-          <label>Assigned Partner (Principal)<br /><input value={partner} onChange={e => setPartner(e.target.value)} style={inputStyle} placeholder="optional" /></label>
-          <label>Description<br /><textarea value={description} onChange={e => setDescription(e.target.value)} style={{ ...inputStyle, height: 80 }} /></label>
-          <button type="submit" disabled={submitting} style={btnStyle}>
-            {submitting ? "Creating…" : "Create"}
-          </button>
+          <label className="tp-label">Title *
+            <input className="tp-input" value={title} onChange={e => setTitle(e.target.value)} required />
+          </label>
+          <label className="tp-label">Matter Type
+            <input className="tp-input" value={matterType} onChange={e => setMatterType(e.target.value)} placeholder="e.g. Commercial Litigation" />
+          </label>
+          <label className="tp-label">Client ID *
+            <input className="tp-input" value={clientId} onChange={e => setClientId(e.target.value)} type="number" required />
+          </label>
+          <label className="tp-label">Assigned Partner (Principal)
+            <input className="tp-input" value={partner} onChange={e => setPartner(e.target.value)} placeholder="optional" />
+          </label>
+          <label className="tp-label">Description
+            <textarea className="tp-input tp-textarea" value={description} onChange={e => setDescription(e.target.value)} />
+          </label>
+          <div>
+            <button type="submit" className="btn btn-primary" disabled={submitting}>
+              {submitting ? "Creating…" : "Create"}
+            </button>
+          </div>
         </form>
       )}
 
       {error && <ErrorMessage message={error} />}
       {loading && <LoadingSpinner />}
 
-      <table style={{ width: "100%", borderCollapse: "collapse" }}>
-        <thead>
-          <tr style={{ background: "#f0f0f0" }}>
-            <th style={thStyle}>ID</th>
-            <th style={thStyle}>Title</th>
-            <th style={thStyle}>Type</th>
-            <th style={thStyle}>Status</th>
-            <th style={thStyle}>Client ID</th>
-            <th style={thStyle}></th>
-          </tr>
-        </thead>
-        <tbody>
-          {matters.map(m => (
-            <tr key={String(m.id)} style={{ borderBottom: "1px solid #eee" }}>
-              <td style={tdStyle}>{String(m.id)}</td>
-              <td style={tdStyle}>{m.title}</td>
-              <td style={tdStyle}>{m.matterType || "—"}</td>
-              <td style={tdStyle}>{m.status}</td>
-              <td style={tdStyle}>{fmtClientId(m.clientId)}</td>
-              <td style={tdStyle}>
-                <Link to={`/matters/${m.id}`}>View</Link>
-                {" · "}
-                <Link to={`/matters/${m.id}/documents`}>Docs</Link>
-              </td>
+      <div className="card">
+        <table className="tp-table">
+          <thead>
+            <tr>
+              <th>ID</th>
+              <th>Title</th>
+              <th>Type</th>
+              <th>Client</th>
+              <th>Status</th>
+              <th></th>
             </tr>
-          ))}
-          {!loading && matters.length === 0 && (
-            <tr><td colSpan={6} style={{ padding: "1rem", color: "#888", textAlign: "center" }}>No matters.</td></tr>
-          )}
-        </tbody>
-      </table>
+          </thead>
+          <tbody>
+            {matters.map(m => (
+              <tr key={String(m.id)}>
+                <td><span className="mono">{String(m.id).padStart(3, "0")}</span></td>
+                <td>{m.title}</td>
+                <td>{m.matterType || "—"}</td>
+                <td><span className="clt-id">{fmtClientId(m.clientId)}</span></td>
+                <td>{statusBadge(m.status)}</td>
+                <td>
+                  <Link to={`/matters/${m.id}`} className="view-link">View</Link>
+                  {" · "}
+                  <Link to={`/matters/${m.id}/documents`} className="view-link">Docs</Link>
+                </td>
+              </tr>
+            ))}
+            {!loading && matters.length === 0 && (
+              <tr><td colSpan={6} className="empty-state">No matters.</td></tr>
+            )}
+          </tbody>
+        </table>
+      </div>
     </div>
   );
 }
-
-const btnStyle: React.CSSProperties = { padding: "0.5rem 1rem", background: "#1a1a2e", color: "#fff", border: "none", borderRadius: 4, cursor: "pointer" };
-const formStyle: React.CSSProperties = { background: "#f9f9f9", padding: "1rem", borderRadius: 8, marginBottom: "1rem", display: "flex", flexDirection: "column", gap: "0.75rem" };
-const inputStyle: React.CSSProperties = { width: "100%", padding: "0.4rem", boxSizing: "border-box", marginTop: 4 };
-const thStyle: React.CSSProperties = { padding: "0.5rem", textAlign: "left", fontWeight: 600 };
-const tdStyle: React.CSSProperties = { padding: "0.5rem" };

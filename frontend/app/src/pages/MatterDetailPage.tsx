@@ -6,6 +6,16 @@ import type { Matter } from "../backend/api/backend";
 import LoadingSpinner from "../components/LoadingSpinner";
 import ErrorMessage from "../components/ErrorMessage";
 
+function statusBadge(status: string) {
+  const cls =
+    status === "Open"     ? "badge badge-open"     :
+    status === "OnHold"   ? "badge badge-hold"     :
+    status === "Closed"   ? "badge badge-closed"   :
+                            "badge badge-archived";
+  const label = status === "OnHold" ? "On Hold" : status;
+  return <span className={cls}>{label}</span>;
+}
+
 export default function MatterDetailPage() {
   const { id } = useParams<{ id: string }>();
   const { getMatter, updateMatter, closeMatter, putOnHold, resumeMatter, reopenMatter, archiveMatter } = useMatters();
@@ -59,61 +69,83 @@ export default function MatterDetailPage() {
   if (!matter) return <ErrorMessage message={error ?? "Matter not found."} />;
 
   return (
-    <div style={{ maxWidth: 680 }}>
-      <h1 style={{ marginTop: 0 }}>{matter.title}</h1>
-      <p>
-        <strong>Status:</strong> {matter.status} &nbsp;|&nbsp;
-        <strong>Type:</strong> {matter.matterType || "—"} &nbsp;|&nbsp;
-        <strong>Client:</strong> <Link to={`/clients/${matter.clientId}`}>{String(matter.clientId)}</Link>
-      </p>
-      <p><Link to={`/matters/${matter.id}/documents`}>View Documents →</Link></p>
+    <div className="detail-page">
+      <div className="page-header">
+        <div>
+          <div className="page-title">{matter.title}</div>
+          <div className="detail-meta">
+            <span className="mono">{String(matter.id).padStart(3, "0")}</span>
+            &nbsp;·&nbsp;{statusBadge(matter.status)}
+            {matter.matterType && <>&nbsp;·&nbsp;{matter.matterType}</>}
+            &nbsp;·&nbsp;<Link to={`/clients/${matter.clientId}`} className="clt-id">
+              CLT-{String(matter.clientId).padStart(4, "0")}
+            </Link>
+          </div>
+        </div>
+        <Link to={`/matters/${matter.id}/documents`} className="btn btn-neutral btn-sm">
+          <i className="ti ti-files" /> Documents
+        </Link>
+      </div>
 
       {error && <ErrorMessage message={error} onDismiss={() => setError(null)} />}
 
-      {/* Status transition buttons */}
-      <div style={{ display: "flex", gap: "0.5rem", marginBottom: "1rem", flexWrap: "wrap" }}>
+      <div className="transition-btns">
         {matter.status === MatterStatus.Open && (
           <>
-            <button onClick={() => { void handleTransition(putOnHold); }} disabled={submitting} style={{ ...btnStyle, background: "#886600" }}>Put On Hold</button>
-            <button onClick={() => { void handleTransition(closeMatter); }} disabled={submitting} style={{ ...btnStyle, background: "#c00" }}>Close</button>
+            <button className="btn btn-warning btn-sm" onClick={() => { void handleTransition(putOnHold); }} disabled={submitting}>Put On Hold</button>
+            <button className="btn btn-danger btn-sm" onClick={() => { void handleTransition(closeMatter); }} disabled={submitting}>Close</button>
           </>
         )}
         {matter.status === MatterStatus.OnHold && (
           <>
-            <button onClick={() => { void handleTransition(resumeMatter); }} disabled={submitting} style={{ ...btnStyle, background: "#060" }}>Resume</button>
-            <button onClick={() => { void handleTransition(closeMatter); }} disabled={submitting} style={{ ...btnStyle, background: "#c00" }}>Close</button>
+            <button className="btn btn-success btn-sm" onClick={() => { void handleTransition(resumeMatter); }} disabled={submitting}>Resume</button>
+            <button className="btn btn-danger btn-sm" onClick={() => { void handleTransition(closeMatter); }} disabled={submitting}>Close</button>
           </>
         )}
         {matter.status === MatterStatus.Closed && (
           <>
-            <button onClick={() => { void handleTransition(reopenMatter); }} disabled={submitting} style={{ ...btnStyle, background: "#060" }}>Reopen</button>
-            <button onClick={() => { void handleTransition(archiveMatter); }} disabled={submitting} style={{ ...btnStyle, background: "#555" }}>Archive</button>
+            <button className="btn btn-success btn-sm" onClick={() => { void handleTransition(reopenMatter); }} disabled={submitting}>Reopen</button>
+            <button className="btn btn-neutral btn-sm" onClick={() => { void handleTransition(archiveMatter); }} disabled={submitting}>Archive</button>
           </>
         )}
         {matter.status === MatterStatus.Archived && (
-          <span style={{ color: "#888" }}>Archived — terminal state</span>
+          <span style={{ fontSize: 12, color: "var(--tx2)" }}>Archived — terminal state</span>
         )}
       </div>
 
       {!editing ? (
-        <div style={{ display: "flex", flexDirection: "column", gap: "0.5rem" }}>
-          <div><strong>Description:</strong> {matter.description || "—"}</div>
-          {matter.assignedPartner && <div><strong>Partner:</strong> <code>{matter.assignedPartner.toText()}</code></div>}
-          <button onClick={() => setEditing(true)} style={{ ...btnStyle, alignSelf: "flex-start", marginTop: "0.5rem" }}>Edit</button>
-        </div>
+        <>
+          <div className="card" style={{ padding: "16px 20px", marginBottom: 18 }}>
+            <div className="detail-field"><strong>Description</strong>{matter.description || "—"}</div>
+            {matter.assignedPartner && (
+              <div className="detail-field">
+                <strong>Partner</strong>
+                <span className="mono">{matter.assignedPartner.toText()}</span>
+              </div>
+            )}
+          </div>
+          <button className="btn btn-primary btn-sm" onClick={() => setEditing(true)}>
+            <i className="ti ti-pencil" /> Edit
+          </button>
+        </>
       ) : (
-        <form onSubmit={(e) => { void handleUpdate(e); }} style={{ display: "flex", flexDirection: "column", gap: "0.75rem" }}>
-          <label>Title *<br /><input value={title} onChange={e => setTitle(e.target.value)} style={inputStyle} required /></label>
-          <label>Description<br /><textarea value={description} onChange={e => setDescription(e.target.value)} style={{ ...inputStyle, height: 100 }} /></label>
-          <div style={{ display: "flex", gap: "0.5rem" }}>
-            <button type="submit" disabled={submitting} style={btnStyle}>{submitting ? "Saving…" : "Save"}</button>
-            <button type="button" onClick={() => setEditing(false)} style={{ ...btnStyle, background: "#888" }}>Cancel</button>
+        <form className="tp-form" onSubmit={(e) => { void handleUpdate(e); }}>
+          <label className="tp-label">Title *
+            <input className="tp-input" value={title} onChange={e => setTitle(e.target.value)} required />
+          </label>
+          <label className="tp-label">Description
+            <textarea className="tp-input tp-textarea" value={description} onChange={e => setDescription(e.target.value)} />
+          </label>
+          <div className="transition-btns">
+            <button type="submit" className="btn btn-primary btn-sm" disabled={submitting}>
+              {submitting ? "Saving…" : "Save"}
+            </button>
+            <button type="button" className="btn btn-neutral btn-sm" onClick={() => setEditing(false)}>
+              Cancel
+            </button>
           </div>
         </form>
       )}
     </div>
   );
 }
-
-const btnStyle: React.CSSProperties = { padding: "0.5rem 1rem", background: "#1a1a2e", color: "#fff", border: "none", borderRadius: 4, cursor: "pointer" };
-const inputStyle: React.CSSProperties = { width: "100%", padding: "0.4rem", boxSizing: "border-box", marginTop: 4 };

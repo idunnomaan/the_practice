@@ -11,6 +11,17 @@ import ConfirmDialog from "../components/ConfirmDialog";
 const ALLOWED_TYPES = ["application/pdf", "application/vnd.openxmlformats-officedocument.wordprocessingml.document", "image/png", "image/jpeg"];
 const MAX_SIZE = 100 * 1024 * 1024; // 100 MB
 
+function fileIcon(contentType?: string) {
+  if (!contentType) return "ti-file";
+  if (contentType === "application/pdf") return "ti-file-type-pdf";
+  if (contentType.startsWith("image/")) return "ti-photo";
+  return "ti-file-text";
+}
+
+function docStatusBadge(status: string) {
+  return status === "Active" ? "badge badge-active" : "badge badge-archived";
+}
+
 export default function DocumentsPage() {
   const { id } = useParams<{ id: string }>();
   const matterId = BigInt(id ?? "0");
@@ -92,7 +103,9 @@ export default function DocumentsPage() {
 
   return (
     <div>
-      <h1 style={{ marginTop: 0 }}>Documents — Matter {id}</h1>
+      <div className="page-header">
+        <div className="page-title">Documents — Matter {id}</div>
+      </div>
 
       {confirmDelete !== null && (
         <ConfirmDialog
@@ -102,22 +115,22 @@ export default function DocumentsPage() {
         />
       )}
 
-      {/* Upload area */}
-      <div style={{ background: "#f9f9f9", padding: "1rem", borderRadius: 8, marginBottom: "1rem" }}>
+      <div className="upload-area">
         <input
           ref={fileRef}
           type="file"
           accept=".pdf,.docx,.png,.jpg,.jpeg"
           onChange={(e) => { void handleFileChange(e); }}
           disabled={uploading}
+          style={{ fontSize: 13 }}
         />
         {uploading && (
-          <div style={{ marginTop: "0.5rem" }}>
-            <div style={{ background: "#ddd", borderRadius: 4, height: 8 }}>
-              <div style={{ background: "#1a1a2e", height: 8, borderRadius: 4, width: `${progress}%`, transition: "width 0.2s" }} />
+          <>
+            <div className="progress-bar">
+              <div className="progress-fill" style={{ width: `${progress}%` }} />
             </div>
-            <div style={{ fontSize: "0.8rem", color: "#555", marginTop: 4 }}>Uploading… {progress}%</div>
-          </div>
+            <div className="progress-label">Uploading… {progress}%</div>
+          </>
         )}
         {uploadError && <ErrorMessage message={uploadError} onDismiss={() => setUploadError(null)} />}
       </div>
@@ -126,53 +139,56 @@ export default function DocumentsPage() {
       {error && <ErrorMessage message={error} />}
       {loading && <LoadingSpinner />}
 
-      <table style={{ width: "100%", borderCollapse: "collapse" }}>
-        <thead>
-          <tr style={{ background: "#f0f0f0" }}>
-            <th style={thStyle}>ID</th>
-            <th style={thStyle}>Filename</th>
-            <th style={thStyle}>Type</th>
-            <th style={thStyle}>Size</th>
-            <th style={thStyle}>Status</th>
-            <th style={thStyle}>Actions</th>
-          </tr>
-        </thead>
-        <tbody>
-          {documents.map(doc => {
-            const ver = versions.get(doc.id);
-            return (
-              <tr key={String(doc.id)} style={{ borderBottom: "1px solid #eee", opacity: doc.status === DocumentStatus.Deleted ? 0.5 : 1 }}>
-                <td style={tdStyle}>{String(doc.id)}</td>
-                <td style={tdStyle}>{ver?.filename ?? "…"}</td>
-                <td style={tdStyle}>{ver?.contentType ?? "…"}</td>
-                <td style={tdStyle}>{ver ? formatBytes(ver.sizeBytes) : "…"}</td>
-                <td style={tdStyle}>{doc.status}</td>
-                <td style={tdStyle}>
-                  {doc.status === DocumentStatus.Active && (
-                    <>
-                      <button
-                        onClick={() => { void handleDownload(doc); }}
-                        disabled={downloading === doc.id}
-                        style={smallBtn}
-                      >
-                        {downloading === doc.id ? "…" : "Download"}
-                      </button>
-                      {role === Role.Partner && (
-                        <button onClick={() => setConfirmDelete(doc.id)} style={{ ...smallBtn, background: "#c00", marginLeft: 4 }}>
-                          Delete
+      <div className="card">
+        <table className="tp-table">
+          <thead>
+            <tr>
+              <th>File</th>
+              <th>Type</th>
+              <th>Size</th>
+              <th>Status</th>
+              <th></th>
+            </tr>
+          </thead>
+          <tbody>
+            {documents.map(doc => {
+              const ver = versions.get(doc.id);
+              return (
+                <tr key={String(doc.id)} style={{ opacity: doc.status === DocumentStatus.Deleted ? 0.5 : 1 }}>
+                  <td>
+                    <i className={`ti ${fileIcon(ver?.contentType)} file-icon`} />
+                    {ver?.filename ?? "…"}
+                  </td>
+                  <td style={{ color: "var(--tx2)", fontSize: 12 }}>{ver?.contentType ?? "…"}</td>
+                  <td>{ver ? formatBytes(ver.sizeBytes) : "…"}</td>
+                  <td><span className={docStatusBadge(doc.status)}>{doc.status}</span></td>
+                  <td>
+                    {doc.status === DocumentStatus.Active && (
+                      <div style={{ display: "flex", gap: 6 }}>
+                        <button
+                          className="btn btn-neutral btn-sm"
+                          onClick={() => { void handleDownload(doc); }}
+                          disabled={downloading === doc.id}
+                        >
+                          {downloading === doc.id ? "…" : "Download"}
                         </button>
-                      )}
-                    </>
-                  )}
-                </td>
-              </tr>
-            );
-          })}
-          {!loading && documents.length === 0 && (
-            <tr><td colSpan={6} style={{ padding: "1rem", color: "#888", textAlign: "center" }}>No documents.</td></tr>
-          )}
-        </tbody>
-      </table>
+                        {role === Role.Partner && (
+                          <button className="btn btn-danger btn-sm" onClick={() => setConfirmDelete(doc.id)}>
+                            Delete
+                          </button>
+                        )}
+                      </div>
+                    )}
+                  </td>
+                </tr>
+              );
+            })}
+            {!loading && documents.length === 0 && (
+              <tr><td colSpan={5} className="empty-state">No documents.</td></tr>
+            )}
+          </tbody>
+        </table>
+      </div>
     </div>
   );
 }
@@ -183,7 +199,3 @@ function formatBytes(bytes: bigint) {
   if (n < 1024 * 1024) return `${(n / 1024).toFixed(1)} KB`;
   return `${(n / (1024 * 1024)).toFixed(1)} MB`;
 }
-
-const thStyle: React.CSSProperties = { padding: "0.5rem", textAlign: "left", fontWeight: 600 };
-const tdStyle: React.CSSProperties = { padding: "0.5rem" };
-const smallBtn: React.CSSProperties = { padding: "0.3rem 0.6rem", background: "#1a1a2e", color: "#fff", border: "none", borderRadius: 4, cursor: "pointer", fontSize: "0.85rem" };

@@ -6,6 +6,10 @@ import type { Principal } from "@icp-sdk/core/principal";
 import LoadingSpinner from "../components/LoadingSpinner";
 import ErrorMessage from "../components/ErrorMessage";
 
+function roleBadge(role: string) {
+  return role === "Partner" ? "badge badge-partner" : "badge badge-assoc";
+}
+
 export default function UsersPage() {
   const { principal: myPrincipal } = useAuth();
   const { users, loading, error, load, addUser, suspendUser, unsuspendUser, setUserRole } = useUsers();
@@ -57,79 +61,90 @@ export default function UsersPage() {
 
   return (
     <div>
-      <h1 style={{ marginTop: 0 }}>User Management</h1>
+      <div className="page-header">
+        <div className="page-title">User Management</div>
+      </div>
 
-      <form onSubmit={(e) => { void handleAdd(e); }} style={formStyle}>
-        <h3 style={{ margin: 0 }}>Add User</h3>
+      <form className="tp-form" style={{ maxWidth: 500 }} onSubmit={(e) => { void handleAdd(e); }}>
+        <h3>Add User</h3>
         {formError && <ErrorMessage message={formError} onDismiss={() => setFormError(null)} />}
-        <label>Principal *<br /><input value={newPrincipal} onChange={e => setNewPrincipal(e.target.value)} style={inputStyle} placeholder="xxxxx-xxxxx-…" /></label>
-        <label>Role<br />
-          <select value={newRole} onChange={e => setNewRole(e.target.value as Role)} style={inputStyle}>
+        <label className="tp-label">Principal *
+          <input className="tp-input" value={newPrincipal} onChange={e => setNewPrincipal(e.target.value)} placeholder="xxxxx-xxxxx-…" />
+        </label>
+        <label className="tp-label">Role
+          <select className="tp-input" value={newRole} onChange={e => setNewRole(e.target.value as Role)}>
             <option value={Role.Partner}>Partner</option>
             <option value={Role.Associate}>Associate</option>
             <option value={Role.Staff}>Staff</option>
           </select>
         </label>
-        <button type="submit" disabled={submitting} style={btnStyle}>{submitting ? "Adding…" : "Add User"}</button>
+        <div>
+          <button type="submit" className="btn btn-primary" disabled={submitting}>
+            {submitting ? "Adding…" : "Add User"}
+          </button>
+        </div>
       </form>
 
       {actionError && <ErrorMessage message={actionError} onDismiss={() => setActionError(null)} />}
       {error && <ErrorMessage message={error} />}
       {loading && <LoadingSpinner />}
 
-      <table style={{ width: "100%", borderCollapse: "collapse", marginTop: "1rem" }}>
-        <thead>
-          <tr style={{ background: "#f0f0f0" }}>
-            <th style={thStyle}>Principal</th>
-            <th style={thStyle}>Role</th>
-            <th style={thStyle}>Status</th>
-            <th style={thStyle}>Actions</th>
-          </tr>
-        </thead>
-        <tbody>
-          {users.map(([p, rec]) => {
-            const pText = p.toText();
-            const isMe = pText === myPrincipal;
-            return (
-              <tr key={pText} style={{ borderBottom: "1px solid #eee", background: isMe ? "#f0f8ff" : undefined }}>
-                <td style={tdStyle}><code style={{ fontSize: "0.8rem" }}>{pText.slice(0, 20)}…</code>{isMe && <span style={{ marginLeft: 4, color: "#888" }}>(you)</span>}</td>
-                <td style={tdStyle}>{rec.role}</td>
-                <td style={tdStyle}>{rec.suspended ? "Suspended" : "Active"}</td>
-                <td style={tdStyle}>
-                  {!isMe && (
-                    <>
-                      {rec.suspended ? (
-                        <button onClick={() => { void handleAction(unsuspendUser, p); }} style={{ ...smallBtn, background: "#060" }}>Reactivate</button>
-                      ) : (
-                        <button onClick={() => { void handleAction(suspendUser, p); }} style={{ ...smallBtn, background: "#c00" }}>Suspend</button>
-                      )}
-                      <select
-                        value={rec.role}
-                        onChange={e => { void handleRoleChange(p, e.target.value as Role); }}
-                        style={{ marginLeft: 8, padding: "0.3rem" }}
-                      >
-                        <option value={Role.Partner}>Partner</option>
-                        <option value={Role.Associate}>Associate</option>
-                        <option value={Role.Staff}>Staff</option>
-                      </select>
-                    </>
-                  )}
-                </td>
-              </tr>
-            );
-          })}
-          {!loading && users.length === 0 && (
-            <tr><td colSpan={4} style={{ padding: "1rem", color: "#888", textAlign: "center" }}>No users.</td></tr>
-          )}
-        </tbody>
-      </table>
+      <div className="card">
+        <table className="tp-table">
+          <thead>
+            <tr>
+              <th>Principal</th>
+              <th>Role</th>
+              <th>Status</th>
+              <th>Actions</th>
+            </tr>
+          </thead>
+          <tbody>
+            {users.map(([p, rec]) => {
+              const pText = p.toText();
+              const isMe = pText === myPrincipal;
+              return (
+                <tr key={pText} style={{ background: isMe ? "var(--ac2)" : undefined }}>
+                  <td>
+                    <span className="mono">{pText.slice(0, 20)}…</span>
+                    {isMe && <span style={{ marginLeft: 6, fontSize: 11, color: "var(--tx2)" }}>(you)</span>}
+                  </td>
+                  <td><span className={roleBadge(rec.role)}>{rec.role}</span></td>
+                  <td>
+                    <span className={rec.suspended ? "badge badge-suspended" : "badge badge-active"}>
+                      {rec.suspended ? "Suspended" : "Active"}
+                    </span>
+                  </td>
+                  <td>
+                    {!isMe && (
+                      <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                        {rec.suspended ? (
+                          <button className="btn btn-success btn-sm" onClick={() => { void handleAction(unsuspendUser, p); }}>Reactivate</button>
+                        ) : (
+                          <button className="btn btn-danger btn-sm" onClick={() => { void handleAction(suspendUser, p); }}>Suspend</button>
+                        )}
+                        <select
+                          className="tp-input"
+                          style={{ width: "auto", padding: "5px 8px" }}
+                          value={rec.role}
+                          onChange={e => { void handleRoleChange(p, e.target.value as Role); }}
+                        >
+                          <option value={Role.Partner}>Partner</option>
+                          <option value={Role.Associate}>Associate</option>
+                          <option value={Role.Staff}>Staff</option>
+                        </select>
+                      </div>
+                    )}
+                  </td>
+                </tr>
+              );
+            })}
+            {!loading && users.length === 0 && (
+              <tr><td colSpan={4} className="empty-state">No users.</td></tr>
+            )}
+          </tbody>
+        </table>
+      </div>
     </div>
   );
 }
-
-const btnStyle: React.CSSProperties = { padding: "0.5rem 1rem", background: "#1a1a2e", color: "#fff", border: "none", borderRadius: 4, cursor: "pointer" };
-const smallBtn: React.CSSProperties = { padding: "0.3rem 0.6rem", color: "#fff", border: "none", borderRadius: 4, cursor: "pointer", fontSize: "0.85rem" };
-const formStyle: React.CSSProperties = { background: "#f9f9f9", padding: "1rem", borderRadius: 8, marginBottom: "1rem", display: "flex", flexDirection: "column", gap: "0.75rem", maxWidth: 500 };
-const inputStyle: React.CSSProperties = { width: "100%", padding: "0.4rem", boxSizing: "border-box", marginTop: 4 };
-const thStyle: React.CSSProperties = { padding: "0.5rem", textAlign: "left", fontWeight: 600 };
-const tdStyle: React.CSSProperties = { padding: "0.5rem" };

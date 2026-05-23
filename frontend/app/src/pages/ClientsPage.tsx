@@ -9,6 +9,11 @@ function fmtClientId(id: bigint): string {
   return "CLT-" + String(id).padStart(4, "0");
 }
 
+function statusBadge(status: string) {
+  const cls = status === "Active" ? "badge badge-active" : "badge badge-inactive";
+  return <span className={cls}>{status}</span>;
+}
+
 export default function ClientsPage() {
   const { clients, loading, error, load, createClient } = useClients();
 
@@ -47,74 +52,79 @@ export default function ClientsPage() {
 
   return (
     <div>
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "1rem" }}>
-        <h1 style={{ margin: 0 }}>Clients</h1>
-        <button onClick={() => setShowForm(!showForm)} style={btnStyle}>
-          {showForm ? "Cancel" : "Create Client"}
+      <div className="page-header">
+        <div className="page-title">Clients</div>
+        <button className="add-btn" onClick={() => setShowForm(!showForm)}>
+          <i className="ti ti-plus" />
+          {showForm ? "Cancel" : "New client"}
         </button>
       </div>
 
       {showForm && (
-        <form onSubmit={(e) => { void handleCreate(e); }} style={formStyle}>
+        <form className="tp-form" onSubmit={(e) => { void handleCreate(e); }}>
           {formError && <ErrorMessage message={formError} onDismiss={() => setFormError(null)} />}
-          <label>Name *<br />
-            <input value={name} onChange={e => setName(e.target.value)} style={inputStyle} required />
+          <label className="tp-label">Name *
+            <input className="tp-input" value={name} onChange={e => setName(e.target.value)} required />
           </label>
-          <label>Type<br />
-            <select value={clientType} onChange={e => setClientType(e.target.value as ClientType)} style={inputStyle}>
+          <label className="tp-label">Type
+            <select className="tp-input" value={clientType} onChange={e => setClientType(e.target.value as ClientType)}>
               <option value={ClientType.Individual}>Individual</option>
               <option value={ClientType.Company}>Company</option>
               <option value={ClientType.Other}>Other</option>
             </select>
           </label>
-          <label>Email<br /><input value={email} onChange={e => setEmail(e.target.value)} style={inputStyle} type="email" /></label>
-          <label>Phone<br /><input value={phone} onChange={e => setPhone(e.target.value)} style={inputStyle} /></label>
-          <label>Identifier (NIC / Reg No)<br /><input value={identifier} onChange={e => setIdentifier(e.target.value)} style={inputStyle} /></label>
-          <label>Notes<br /><textarea value={notes} onChange={e => setNotes(e.target.value)} style={{ ...inputStyle, height: 80 }} /></label>
-          <button type="submit" disabled={submitting} style={btnStyle}>
-            {submitting ? "Creating…" : "Create"}
-          </button>
+          <label className="tp-label">Email
+            <input className="tp-input" value={email} onChange={e => setEmail(e.target.value)} type="email" />
+          </label>
+          <label className="tp-label">Phone
+            <input className="tp-input" value={phone} onChange={e => setPhone(e.target.value)} />
+          </label>
+          <label className="tp-label">Identifier (NIC / Reg No)
+            <input className="tp-input" value={identifier} onChange={e => setIdentifier(e.target.value)} />
+          </label>
+          <label className="tp-label">Notes
+            <textarea className="tp-input tp-textarea" value={notes} onChange={e => setNotes(e.target.value)} />
+          </label>
+          <div>
+            <button type="submit" className="btn btn-primary" disabled={submitting}>
+              {submitting ? "Creating…" : "Create"}
+            </button>
+          </div>
         </form>
       )}
 
       {error && <ErrorMessage message={error} />}
       {loading && <LoadingSpinner />}
 
-      <table style={{ width: "100%", borderCollapse: "collapse", marginTop: "1rem" }}>
-        <thead>
-          <tr style={{ background: "#f0f0f0" }}>
-            <th style={thStyle}>ID</th>
-            <th style={thStyle}>Name</th>
-            <th style={thStyle}>Type</th>
-            <th style={thStyle}>Status</th>
-            <th style={thStyle}>Email</th>
-            <th style={thStyle}></th>
-          </tr>
-        </thead>
-        <tbody>
-          {clients.map(c => (
-            <tr key={String(c.id)} style={{ borderBottom: "1px solid #eee" }}>
-              <td style={tdStyle}>{fmtClientId(c.id)}</td>
-              <td style={tdStyle}>{c.name}</td>
-              <td style={tdStyle}>{c.clientType}</td>
-              <td style={tdStyle}>{c.status}</td>
-              <td style={tdStyle}>{c.primaryEmail ?? "—"}</td>
-              <td style={tdStyle}>
-                <Link to={`/clients/${c.id}`}>View</Link>
-              </td>
+      <div className="card">
+        <table className="tp-table">
+          <thead>
+            <tr>
+              <th>Client ID</th>
+              <th>Name</th>
+              <th>Type</th>
+              <th>Email</th>
+              <th>Status</th>
+              <th></th>
             </tr>
-          ))}
-          {!loading && clients.length === 0 && (
-            <tr><td colSpan={6} style={{ padding: "1rem", color: "#888", textAlign: "center" }}>No clients.</td></tr>
-          )}
-        </tbody>
-      </table>
+          </thead>
+          <tbody>
+            {clients.map(c => (
+              <tr key={String(c.id)}>
+                <td><span className="clt-id">{fmtClientId(c.id)}</span></td>
+                <td>{c.name}</td>
+                <td>{c.clientType}</td>
+                <td>{c.primaryEmail ?? "—"}</td>
+                <td>{statusBadge(c.status)}</td>
+                <td><Link to={`/clients/${c.id}`} className="view-link">View</Link></td>
+              </tr>
+            ))}
+            {!loading && clients.length === 0 && (
+              <tr><td colSpan={6} className="empty-state">No clients.</td></tr>
+            )}
+          </tbody>
+        </table>
+      </div>
     </div>
   );
 }
-
-const btnStyle: React.CSSProperties = { padding: "0.5rem 1rem", background: "#1a1a2e", color: "#fff", border: "none", borderRadius: 4, cursor: "pointer" };
-const formStyle: React.CSSProperties = { background: "#f9f9f9", padding: "1rem", borderRadius: 8, marginBottom: "1rem", display: "flex", flexDirection: "column", gap: "0.75rem" };
-const inputStyle: React.CSSProperties = { width: "100%", padding: "0.4rem", boxSizing: "border-box", marginTop: 4 };
-const thStyle: React.CSSProperties = { padding: "0.5rem", textAlign: "left", fontWeight: 600 };
-const tdStyle: React.CSSProperties = { padding: "0.5rem" };

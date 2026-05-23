@@ -5,7 +5,7 @@ import ErrorMessage from "../components/ErrorMessage";
 import type { MatterStatusCounts, ClientStatusCounts, DocumentStatusCounts } from "../backend/api/backend";
 
 export default function DashboardPage() {
-  const { actor, principal, role } = useAuth();
+  const { actor } = useAuth();
   const [matters, setMatters] = useState<MatterStatusCounts | null>(null);
   const [clients, setClients] = useState<ClientStatusCounts | null>(null);
   const [documents, setDocuments] = useState<DocumentStatusCounts | null>(null);
@@ -33,44 +33,45 @@ export default function DashboardPage() {
 
   return (
     <div>
-      <h1 style={{ marginTop: 0 }}>Dashboard</h1>
-      <p style={{ color: "#555" }}>
-        Principal: <code>{principal}</code> &nbsp;|&nbsp; Role: <strong>{role}</strong>
-      </p>
+      <div className="page-title" style={{ marginBottom: 22 }}>Dashboard</div>
 
       {error && <ErrorMessage message={error} />}
 
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))", gap: "1rem", marginTop: "1.5rem" }}>
-        {matters && (
-          <>
-            <StatCard label="Open Matters" value={matters.open} />
-            <StatCard label="On Hold" value={matters.onHold} />
-            <StatCard label="Closed Matters" value={matters.closed} />
-            <StatCard label="Archived Matters" value={matters.archived} />
-          </>
-        )}
-        {clients && (
-          <>
-            <StatCard label="Active Clients" value={clients.active} />
-            <StatCard label="Inactive Clients" value={clients.inactive} />
-          </>
-        )}
-        {documents && (
-          <>
-            <StatCard label="Active Documents" value={documents.active} />
-            <StatCard label="Deleted Documents" value={documents.deleted} />
-          </>
-        )}
-      </div>
+      {matters && (
+        <div className="stat-grid">
+          <StatCard icon="ti-briefcase"    label="Open Matters"  value={matters.open} />
+          <StatCard icon="ti-pause"        label="On Hold"       value={matters.onHold} />
+          <StatCard icon="ti-check"        label="Closed"        value={matters.closed} />
+          <StatCard icon="ti-archive"      label="Archived"      value={matters.archived} />
+        </div>
+      )}
+
+      {(clients || documents) && (
+        <div className="stat-grid">
+          {clients && (
+            <>
+              <StatCard icon="ti-users"      label="Active Clients"   value={clients.active} />
+              <StatCard icon="ti-user-off"   label="Inactive Clients" value={clients.inactive} />
+            </>
+          )}
+          {documents && (
+            <>
+              <StatCard icon="ti-files"       label="Active Documents"  value={documents.active} />
+              <StatCard icon="ti-trash"        label="Deleted Documents" value={documents.deleted} />
+            </>
+          )}
+        </div>
+      )}
     </div>
   );
 }
 
-function StatCard({ label, value }: { label: string; value: bigint }) {
+function StatCard({ label, value, icon }: { label: string; value: bigint; icon: string }) {
   return (
-    <div style={{ background: "#f5f5f5", borderRadius: 8, padding: "1.25rem", textAlign: "center" }}>
-      <div style={{ fontSize: "2rem", fontWeight: 700 }}>{value.toString()}</div>
-      <div style={{ color: "#555", marginTop: "0.25rem" }}>{label}</div>
+    <div className="stat-card">
+      <div className="stat-icon"><i className={`ti ${icon}`} /></div>
+      <div className="stat-label">{label}</div>
+      <div className="stat-val">{value.toString()}</div>
     </div>
   );
 }

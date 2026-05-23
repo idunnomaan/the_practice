@@ -87,63 +87,81 @@ export default function ClientDetailPage() {
   if (loading) return <LoadingSpinner />;
   if (!client) return <ErrorMessage message={error ?? "Client not found."} />;
 
+  const statusCls = client.status === ClientStatus.Active ? "badge badge-active" : "badge badge-inactive";
+
   return (
-    <div style={{ maxWidth: 640 }}>
-      <h1 style={{ marginTop: 0 }}>{client.name}</h1>
-      <p style={{ color: "#666", fontSize: "0.85rem", marginTop: "-0.5rem" }}>{"CLT-" + String(client.id).padStart(4, "0")}</p>
-      <p><strong>Status:</strong> {client.status} &nbsp;|&nbsp; <strong>Type:</strong> {client.clientType}</p>
+    <div className="detail-page">
+      <div className="page-header">
+        <div>
+          <div className="page-title">{client.name}</div>
+          <div className="detail-meta">
+            <span className="clt-id">{"CLT-" + String(client.id).padStart(4, "0")}</span>
+            &nbsp;·&nbsp;<span className={statusCls}>{client.status}</span>
+            &nbsp;·&nbsp;{client.clientType}
+          </div>
+        </div>
+      </div>
 
       {error && <ErrorMessage message={error} onDismiss={() => setError(null)} />}
 
       {!editing ? (
-        <div style={{ display: "flex", flexDirection: "column", gap: "0.5rem" }}>
-          <Row label="Email" value={client.primaryEmail ?? "—"} />
-          <Row label="Phone" value={client.primaryPhone ?? "—"} />
-          <Row label="Identifier" value={client.identifier ?? "—"} />
-          <Row label="Notes" value={client.notes || "—"} />
-          <div style={{ display: "flex", gap: "0.5rem", marginTop: "1rem" }}>
-            <button onClick={() => setEditing(true)} style={btnStyle}>Edit</button>
+        <>
+          <div className="card" style={{ padding: "16px 20px", marginBottom: 18 }}>
+            <div className="detail-field"><strong>Email</strong>{client.primaryEmail ?? "—"}</div>
+            <div className="detail-field"><strong>Phone</strong>{client.primaryPhone ?? "—"}</div>
+            <div className="detail-field"><strong>Identifier</strong>{client.identifier ?? "—"}</div>
+            <div className="detail-field"><strong>Notes</strong>{client.notes || "—"}</div>
+          </div>
+          <div className="transition-btns">
+            <button className="btn btn-primary btn-sm" onClick={() => setEditing(true)}>
+              <i className="ti ti-pencil" /> Edit
+            </button>
             {role === Role.Partner && client.status === ClientStatus.Active && (
-              <button onClick={() => { void handleDeactivate(); }} disabled={submitting} style={{ ...btnStyle, background: "#c00" }}>
+              <button className="btn btn-danger btn-sm" onClick={() => { void handleDeactivate(); }} disabled={submitting}>
                 Deactivate
               </button>
             )}
             {role === Role.Partner && client.status === ClientStatus.Inactive && (
-              <button onClick={() => { void handleReactivate(); }} disabled={submitting} style={{ ...btnStyle, background: "#060" }}>
+              <button className="btn btn-success btn-sm" onClick={() => { void handleReactivate(); }} disabled={submitting}>
                 Reactivate
               </button>
             )}
           </div>
-        </div>
+        </>
       ) : (
-        <form onSubmit={(e) => { void handleUpdate(e); }} style={{ display: "flex", flexDirection: "column", gap: "0.75rem" }}>
-          <label>Name *<br /><input value={name} onChange={e => setName(e.target.value)} style={inputStyle} required /></label>
-          <label>Type<br />
-            <select value={clientType} onChange={e => setClientType(e.target.value as ClientType)} style={inputStyle}>
+        <form className="tp-form" onSubmit={(e) => { void handleUpdate(e); }}>
+          <label className="tp-label">Name *
+            <input className="tp-input" value={name} onChange={e => setName(e.target.value)} required />
+          </label>
+          <label className="tp-label">Type
+            <select className="tp-input" value={clientType} onChange={e => setClientType(e.target.value as ClientType)}>
               <option value={ClientType.Individual}>Individual</option>
               <option value={ClientType.Company}>Company</option>
               <option value={ClientType.Other}>Other</option>
             </select>
           </label>
-          <label>Email<br /><input value={email} onChange={e => setEmail(e.target.value)} style={inputStyle} type="email" /></label>
-          <label>Phone<br /><input value={phone} onChange={e => setPhone(e.target.value)} style={inputStyle} /></label>
-          <label>Identifier (NIC / Reg No)<br /><input value={identifier} onChange={e => setIdentifier(e.target.value)} style={inputStyle} /></label>
-          <label>Notes<br /><textarea value={notes} onChange={e => setNotes(e.target.value)} style={{ ...inputStyle, height: 80 }} /></label>
-          <div style={{ display: "flex", gap: "0.5rem" }}>
-            <button type="submit" disabled={submitting} style={btnStyle}>{submitting ? "Saving…" : "Save"}</button>
-            <button type="button" onClick={() => setEditing(false)} style={{ ...btnStyle, background: "#888" }}>Cancel</button>
+          <label className="tp-label">Email
+            <input className="tp-input" value={email} onChange={e => setEmail(e.target.value)} type="email" />
+          </label>
+          <label className="tp-label">Phone
+            <input className="tp-input" value={phone} onChange={e => setPhone(e.target.value)} />
+          </label>
+          <label className="tp-label">Identifier (NIC / Reg No)
+            <input className="tp-input" value={identifier} onChange={e => setIdentifier(e.target.value)} />
+          </label>
+          <label className="tp-label">Notes
+            <textarea className="tp-input tp-textarea" value={notes} onChange={e => setNotes(e.target.value)} />
+          </label>
+          <div className="transition-btns">
+            <button type="submit" className="btn btn-primary btn-sm" disabled={submitting}>
+              {submitting ? "Saving…" : "Save"}
+            </button>
+            <button type="button" className="btn btn-neutral btn-sm" onClick={() => setEditing(false)}>
+              Cancel
+            </button>
           </div>
         </form>
       )}
     </div>
   );
 }
-
-function Row({ label, value }: { label: string; value: string }) {
-  return (
-    <div><strong>{label}:</strong> {value}</div>
-  );
-}
-
-const btnStyle: React.CSSProperties = { padding: "0.5rem 1rem", background: "#1a1a2e", color: "#fff", border: "none", borderRadius: 4, cursor: "pointer" };
-const inputStyle: React.CSSProperties = { width: "100%", padding: "0.4rem", boxSizing: "border-box", marginTop: 4 };
