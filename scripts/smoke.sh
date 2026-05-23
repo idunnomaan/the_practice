@@ -1193,6 +1193,442 @@ ANON_RESULT=$(icp canister call backend createExportManifest "()" \
 check "anonymous createExportManifest rejected" "err\|Error\|anonymous\|not allowed" "$ANON_RESULT"
 echo ""
 
+# ─────────────────────────────────────────────────────────────────────────────
+# ── FIRM LIBRARY SMOKE TESTS — Phase 1.5 (Steps 102–126) ─────────────────────
+# ─────────────────────────────────────────────────────────────────────────────
+
+# ── Step 102: createFolder — root level ───────────────────────────────────────
+echo "Step 102: createFolder — two root folders; getFolderCount = 2"
+R=$(icp canister call backend createFolder '("Contracts", null)')
+check "createFolder Contracts ok" "ok" "$R"
+LIB_F1=$(echo "$R" | python3 -c "import sys,re; m=re.search(r'ok\s*=\s*(\d+)',sys.stdin.read()); print(m.group(1) if m else '1')")
+R=$(icp canister call backend createFolder '("Templates", null)')
+check "createFolder Templates ok" "ok" "$R"
+LIB_F2=$(echo "$R" | python3 -c "import sys,re; m=re.search(r'ok\s*=\s*(\d+)',sys.stdin.read()); print(m.group(1) if m else '2')")
+R=$(icp canister call backend getFolderCount "()")
+check "getFolderCount = 2 after two root folders" "2" "$R"
+echo ""
+
+# ── Step 103: nested folders + depth queries ──────────────────────────────────
+echo "Step 103: nested createFolder; getFolderDepth; getFolder; listAllFolders"
+R=$(icp canister call backend createFolder "(\"NDAs\", opt ($LIB_F1 : nat))")
+check "createFolder NDAs under Contracts ok" "ok" "$R"
+LIB_F3=$(echo "$R" | python3 -c "import sys,re; m=re.search(r'ok\s*=\s*(\d+)',sys.stdin.read()); print(m.group(1) if m else '3')")
+R=$(icp canister call backend getFolderDepth "($LIB_F1 : nat)")
+check "getFolderDepth Contracts = 1" "1" "$R"
+R=$(icp canister call backend getFolderDepth "($LIB_F3 : nat)")
+check "getFolderDepth NDAs = 2" "2" "$R"
+R=$(icp canister call backend getFolder "($LIB_F3 : nat)")
+check "getFolder returns NDAs name" "NDAs" "$R"
+R=$(icp canister call backend listAllFolders "()")
+check "listAllFolders contains Contracts" "Contracts" "$R"
+check "listAllFolders contains Templates" "Templates" "$R"
+check "listAllFolders contains NDAs" "NDAs" "$R"
+echo ""
+
+# ── Step 104: MAX_FOLDER_DEPTH = 5 enforcement ───────────────────────────────
+echo "Step 104: depth 3–5 folders created ok; depth 6 rejected; getFolderCount = 6"
+R=$(icp canister call backend createFolder "(\"D3\", opt ($LIB_F3 : nat))")
+check "depth 3 folder ok" "ok" "$R"
+LIB_F4=$(echo "$R" | python3 -c "import sys,re; m=re.search(r'ok\s*=\s*(\d+)',sys.stdin.read()); print(m.group(1) if m else '4')")
+R=$(icp canister call backend createFolder "(\"D4\", opt ($LIB_F4 : nat))")
+check "depth 4 folder ok" "ok" "$R"
+LIB_F5=$(echo "$R" | python3 -c "import sys,re; m=re.search(r'ok\s*=\s*(\d+)',sys.stdin.read()); print(m.group(1) if m else '5')")
+R=$(icp canister call backend createFolder "(\"D5\", opt ($LIB_F5 : nat))")
+check "depth 5 folder ok" "ok" "$R"
+LIB_F6=$(echo "$R" | python3 -c "import sys,re; m=re.search(r'ok\s*=\s*(\d+)',sys.stdin.read()); print(m.group(1) if m else '6')")
+R=$(icp canister call backend createFolder "(\"D6-overflow\", opt ($LIB_F6 : nat))")
+check "depth 6 attempt rejected" "err" "$R"
+check "depth error text mentions 'depth'" "depth" "$R"
+R=$(icp canister call backend getFolderCount "()")
+check "getFolderCount = 6 (D6-overflow not created)" "6" "$R"
+echo ""
+
+# ── Step 105: listFolderContents — Root + Folder scopes ───────────────────────
+echo "Step 105: listFolderContents Root = top-level folders; Folder = direct children only"
+R=$(icp canister call backend listFolderContents '(variant { Root })')
+check "listFolderContents Root has Contracts" "Contracts" "$R"
+check "listFolderContents Root has Templates" "Templates" "$R"
+check_absent "listFolderContents Root excludes nested NDAs" "NDAs" "$R"
+R=$(icp canister call backend listFolderContents "(variant { Folder = $LIB_F1 : nat })")
+check "listFolderContents Folder=Contracts includes NDAs" "NDAs" "$R"
+check_absent "listFolderContents Folder=Contracts excludes D3 (not direct child of F1)" "D3" "$R"
+echo ""
+
+# ── Step 106: renameFolder + role gate ────────────────────────────────────────
+echo "Step 106: renameFolder ok; Staff cannot rename (Associate required)"
+R=$(icp canister call backend renameFolder "($LIB_F2 : nat, \"Standard Templates\")")
+check "renameFolder Templates → Standard Templates ok" "ok" "$R"
+R=$(icp canister call backend getFolder "($LIB_F2 : nat)")
+check "getFolder reflects new name Standard Templates" "Standard Templates" "$R"
+R=$(icp canister call backend renameFolder "($LIB_F1 : nat, \"X\")" --identity smoke-staff)
+check "Staff renameFolder rejected" "err" "$R"
+echo ""
+
+# ── Step 107: moveFolder — happy path + cycle prevention ──────────────────────
+echo "Step 107: moveFolder to root ok; cycle detection rejects move into own subtree"
+R=$(icp canister call backend moveFolder "($LIB_F3 : nat, null)")
+check "moveFolder NDAs to root ok" "ok" "$R"
+R=$(icp canister call backend getFolder "($LIB_F3 : nat)")
+check "NDAs parentId is null after move to root" "null" "$R"
+# F4 is a descendant of F3 — move F3 under F4 is a cycle
+R=$(icp canister call backend moveFolder "($LIB_F3 : nat, opt ($LIB_F4 : nat))")
+check "moveFolder cycle detected (F4 is descendant of F3)" "err" "$R"
+check "cycle error text contains 'cycle'" "cycle" "$R"
+echo ""
+
+# ── Step 108: deleteFolder — dependents block; Associate rejected; leaf ok ─────
+echo "Step 108: deleteFolder non-empty blocked; Associate cannot delete; Partner deletes leaf"
+# F5 has child F6 — blocked
+R=$(icp canister call backend deleteFolder "($LIB_F5 : nat)")
+check "deleteFolder D4 (has child D5) blocked" "err" "$R"
+check "blocked message mentions not empty" "not empty\|child" "$R"
+# Associate cannot delete folders
+R=$(icp canister call backend deleteFolder "($LIB_F6 : nat)" --identity smoke-doc-associate)
+check "Associate deleteFolder rejected (Partner only)" "err" "$R"
+# Partner deletes leaf F6 (D5, depth 5)
+R=$(icp canister call backend deleteFolder "($LIB_F6 : nat)")
+check "Partner deletes leaf folder D5 ok" "ok" "$R"
+R=$(icp canister call backend getFolderCount "()")
+check "getFolderCount = 5 after leaf delete" "5" "$R"
+echo ""
+
+# ── Step 109: Library upload — happy path (single chunk) ──────────────────────
+echo "Step 109: startLibraryUpload + appendLibraryChunk + finalizeLibraryUpload; sha256 ok"
+LIB_BLOB1=$(mktemp /tmp/tp_smoke_XXXXXX.bin)
+printf 'The practice library smoke test item one — contract document.' > "$LIB_BLOB1"
+LIB_BLOB1_SIZE=$(wc -c < "$LIB_BLOB1")
+LIB_LOCAL_HASH1=$(sha256sum "$LIB_BLOB1" | awk '{print $1}')
+R=$(icp canister call backend startLibraryUpload \
+  "(\"Contract Template\", null, vec {\"contract\"; \"template\"}, \"A standard contract template\", \"contract.pdf\", \"application/pdf\", $LIB_BLOB1_SIZE : nat, \"initial upload\", null)")
+check "startLibraryUpload ok" "ok" "$R"
+LIB_S1=$(echo "$R" | python3 -c "import sys,re; m=re.search(r'ok\s*=\s*(\d+)',sys.stdin.read()); print(m.group(1) if m else '1')")
+LIB_ARGS1=$(mktemp /tmp/tp_smoke_XXXXXX.did)
+make_chunk_args_file "$LIB_S1" 0 "$LIB_BLOB1" "$LIB_ARGS1"
+R=$(icp canister call backend appendLibraryChunk --args-file "$LIB_ARGS1")
+check "appendLibraryChunk ok" "ok" "$R"
+LIB_FINALIZE1=$(icp canister call backend finalizeLibraryUpload "($LIB_S1 : nat)")
+check "finalizeLibraryUpload ok" "ok" "$LIB_FINALIZE1"
+LIB_ITEM1=$(echo "$LIB_FINALIZE1" | python3 -c "import sys,re; m=re.search(r'itemId\s*=\s*(\d+)',sys.stdin.read()); print(m.group(1) if m else '1')")
+LIB_V1=$(echo "$LIB_FINALIZE1" | python3 -c "import sys,re; m=re.search(r'versionId\s*=\s*(\d+)',sys.stdin.read()); print(m.group(1) if m else '1')")
+LIB_HASH1=$(extract_sha256_hex "$LIB_FINALIZE1")
+check "library item sha256 matches local hash" "$LIB_LOCAL_HASH1" "$LIB_HASH1"
+R=$(icp canister call backend getLibraryItemCount "()")
+check "getLibraryItemCount = 1" "1" "$R"
+echo ""
+
+# ── Step 110: Second upload (to folder) + listLibraryItems name filter ─────────
+echo "Step 110: second item upload (to Contracts folder); listLibraryItems nameContains filter"
+LIB_BLOB2=$(mktemp /tmp/tp_smoke_XXXXXX.bin)
+printf 'The practice library smoke test item two — NDA document.' > "$LIB_BLOB2"
+LIB_BLOB2_SIZE=$(wc -c < "$LIB_BLOB2")
+R=$(icp canister call backend startLibraryUpload \
+  "(\"Standard NDA\", opt ($LIB_F1 : nat), vec {\"nda\"; \"contract\"}, \"Standard NDA template\", \"nda.docx\", \"application/msword\", $LIB_BLOB2_SIZE : nat, \"nda upload\", null)")
+check "startLibraryUpload item2 ok" "ok" "$R"
+LIB_S2=$(echo "$R" | python3 -c "import sys,re; m=re.search(r'ok\s*=\s*(\d+)',sys.stdin.read()); print(m.group(1) if m else '2')")
+LIB_ARGS2=$(mktemp /tmp/tp_smoke_XXXXXX.did)
+make_chunk_args_file "$LIB_S2" 0 "$LIB_BLOB2" "$LIB_ARGS2"
+icp canister call backend appendLibraryChunk --args-file "$LIB_ARGS2" > /dev/null
+LIB_FINALIZE2=$(icp canister call backend finalizeLibraryUpload "($LIB_S2 : nat)")
+check "finalizeLibraryUpload item2 ok" "ok" "$LIB_FINALIZE2"
+LIB_ITEM2=$(echo "$LIB_FINALIZE2" | python3 -c "import sys,re; m=re.search(r'itemId\s*=\s*(\d+)',sys.stdin.read()); print(m.group(1) if m else '2')")
+LIB_V2=$(echo "$LIB_FINALIZE2" | python3 -c "import sys,re; m=re.search(r'versionId\s*=\s*(\d+)',sys.stdin.read()); print(m.group(1) if m else '2')")
+# listLibraryItems with nameContains filter
+R=$(icp canister call backend listLibraryItems \
+  "(record { nameContains = opt \"NDA\"; currentFilenameContains = null; folderScope = variant { Any }; tagsContainsAny = null; contentType = null; statusFilter = null; uploadedAfter = null; uploadedBefore = null; uploadedBy = null }, 0 : nat, 10 : nat)")
+check "listLibraryItems nameContains=NDA finds Standard NDA" "Standard NDA" "$R"
+check_absent "listLibraryItems NDA filter excludes Contract Template" "Contract Template" "$R"
+# listFolderContents for Contracts now shows item2
+R=$(icp canister call backend listFolderContents "(variant { Folder = $LIB_F1 : nat })")
+check "listFolderContents Contracts shows Standard NDA item" "Standard NDA" "$R"
+echo ""
+
+# ── Step 111: Tag validation — invalid chars; normalization to lowercase ───────
+echo "Step 111: tag with '/' rejected; tag with ',' rejected; addLibraryItemTag normalises"
+R=$(icp canister call backend startLibraryUpload \
+  "(\"Bad Tag\", null, vec {\"bad/tag\"}, \"desc\", \"test.pdf\", \"application/pdf\", 1 : nat, \"\", null)")
+check "tag with '/' rejected at upload start" "err" "$R"
+R=$(icp canister call backend startLibraryUpload \
+  "(\"Bad Tag\", null, vec {\"bad,tag\"}, \"desc\", \"test.pdf\", \"application/pdf\", 1 : nat, \"\", null)")
+check "tag with ',' rejected at upload start" "err" "$R"
+# addLibraryItemTag normalises to lowercase
+R=$(icp canister call backend addLibraryItemTag "($LIB_ITEM1 : nat, \"PRIORITY\")")
+check "addLibraryItemTag PRIORITY ok" "ok" "$R"
+R=$(icp canister call backend getLibraryItem "($LIB_ITEM1 : nat)")
+check "tag stored as lowercase 'priority'" "priority" "$R"
+check_absent "uppercase PRIORITY not stored" "PRIORITY" "$R"
+echo ""
+
+# ── Step 112: Upload role gate — Staff cannot upload ──────────────────────────
+echo "Step 112: Staff cannot startLibraryUpload (Associate or higher required)"
+R=$(icp canister call backend startLibraryUpload \
+  "(\"Staff Upload\", null, vec {}, \"desc\", \"file.pdf\", \"application/pdf\", 1 : nat, \"\", null)" \
+  --identity smoke-staff)
+check "Staff startLibraryUpload rejected" "err" "$R"
+echo ""
+
+# ── Step 113: Versioning — second version of existing item ────────────────────
+echo "Step 113: upload new version of item1; listLibraryVersions = 2; currentVersionId updated; replacement of archived rejected"
+LIB_BLOB3=$(mktemp /tmp/tp_smoke_XXXXXX.bin)
+printf 'The practice library smoke test item one — VERSION TWO content.' > "$LIB_BLOB3"
+LIB_BLOB3_SIZE=$(wc -c < "$LIB_BLOB3")
+R=$(icp canister call backend startLibraryUpload \
+  "(\"\", null, vec {}, \"\", \"contract_v2.pdf\", \"application/pdf\", $LIB_BLOB3_SIZE : nat, \"v2 revision\", opt ($LIB_ITEM1 : nat))")
+check "startLibraryUpload replacement ok" "ok" "$R"
+LIB_S3=$(echo "$R" | python3 -c "import sys,re; m=re.search(r'ok\s*=\s*(\d+)',sys.stdin.read()); print(m.group(1) if m else '3')")
+LIB_ARGS3=$(mktemp /tmp/tp_smoke_XXXXXX.did)
+make_chunk_args_file "$LIB_S3" 0 "$LIB_BLOB3" "$LIB_ARGS3"
+icp canister call backend appendLibraryChunk --args-file "$LIB_ARGS3" > /dev/null
+LIB_FINALIZE3=$(icp canister call backend finalizeLibraryUpload "($LIB_S3 : nat)")
+check "finalizeLibraryUpload v2 ok" "ok" "$LIB_FINALIZE3"
+LIB_V3=$(echo "$LIB_FINALIZE3" | python3 -c "import sys,re; m=re.search(r'versionId\s*=\s*(\d+)',sys.stdin.read()); print(m.group(1) if m else '3')")
+R=$(icp canister call backend listLibraryVersions "($LIB_ITEM1 : nat)")
+check "listLibraryVersions shows versionNumber entries for item1" "versionNumber" "$R"
+R=$(icp canister call backend getLibraryItem "($LIB_ITEM1 : nat)")
+check "item1 currentVersionId updated to LIB_V3" "$LIB_V3" "$R"
+# Replacement of archived item rejected
+R=$(icp canister call backend archiveLibraryItem "($LIB_ITEM2 : nat)")
+check "archive item2 (for replacement-of-archived test)" "ok" "$R"
+R=$(icp canister call backend startLibraryUpload \
+  "(\"\", null, vec {}, \"\", \"nda_v2.docx\", \"application/msword\", 1 : nat, \"\", opt ($LIB_ITEM2 : nat))")
+check "replacement of archived item rejected" "err" "$R"
+R=$(icp canister call backend unarchiveLibraryItem "($LIB_ITEM2 : nat)")
+check "unarchive item2 after test" "ok" "$R"
+echo ""
+
+# ── Step 114: Metadata edits ──────────────────────────────────────────────────
+echo "Step 114: renameLibraryItem; updateLibraryItemDescription; setLibraryItemTags"
+R=$(icp canister call backend renameLibraryItem "($LIB_ITEM1 : nat, \"Master Contract Template\")")
+check "renameLibraryItem ok" "ok" "$R"
+R=$(icp canister call backend getLibraryItem "($LIB_ITEM1 : nat)")
+check "item1 name updated to Master Contract Template" "Master Contract Template" "$R"
+R=$(icp canister call backend updateLibraryItemDescription "($LIB_ITEM1 : nat, \"Updated master document description\")")
+check "updateLibraryItemDescription ok" "ok" "$R"
+R=$(icp canister call backend setLibraryItemTags "($LIB_ITEM1 : nat, vec {\"contract\"; \"master\"; \"priority\"})")
+check "setLibraryItemTags ok" "ok" "$R"
+R=$(icp canister call backend getLibraryItem "($LIB_ITEM1 : nat)")
+check "item1 has tag 'master'" "master" "$R"
+check_absent "old tag 'template' removed by setLibraryItemTags" "\"template\"" "$R"
+echo ""
+
+# ── Step 115: moveLibraryItem ─────────────────────────────────────────────────
+echo "Step 115: moveLibraryItem to folder; back to root; non-existent folder rejected"
+R=$(icp canister call backend moveLibraryItem "($LIB_ITEM1 : nat, opt ($LIB_F2 : nat))")
+check "moveLibraryItem item1 to Standard Templates ok" "ok" "$R"
+R=$(icp canister call backend moveLibraryItem "($LIB_ITEM1 : nat, null)")
+check "moveLibraryItem item1 back to root ok" "ok" "$R"
+R=$(icp canister call backend getLibraryItem "($LIB_ITEM1 : nat)")
+check "item1 folderId = null after move to root" "null" "$R"
+R=$(icp canister call backend moveLibraryItem "($LIB_ITEM1 : nat, opt (9999 : nat))")
+check "moveLibraryItem to non-existent folder rejected" "err" "$R"
+echo ""
+
+# ── Step 116: Lifecycle — archive / unarchive; default filter behaviour ────────
+echo "Step 116: archiveLibraryItem hides from default list; statusFilter=Archived reveals; unarchive restores"
+R=$(icp canister call backend archiveLibraryItem "($LIB_ITEM1 : nat)")
+check "archiveLibraryItem ok" "ok" "$R"
+R=$(icp canister call backend listLibraryItems \
+  "(record { nameContains = null; currentFilenameContains = null; folderScope = variant { Any }; tagsContainsAny = null; contentType = null; statusFilter = null; uploadedAfter = null; uploadedBefore = null; uploadedBy = null }, 0 : nat, 10 : nat)")
+check_absent "archived item1 excluded from default list" "Master Contract Template" "$R"
+check "non-archived item2 still in default list" "Standard NDA" "$R"
+R=$(icp canister call backend searchLibrary \
+  "(record { nameContains = null; currentFilenameContains = null; folderScope = variant { Any }; tagsContainsAny = null; contentType = null; statusFilter = opt variant { Archived }; uploadedAfter = null; uploadedBefore = null; uploadedBy = null }, 0 : nat, 10 : nat)")
+check "statusFilter=Archived surfaces archived item1" "Master Contract Template" "$R"
+R=$(icp canister call backend unarchiveLibraryItem "($LIB_ITEM1 : nat)")
+check "unarchiveLibraryItem ok" "ok" "$R"
+R=$(icp canister call backend listLibraryItems \
+  "(record { nameContains = null; currentFilenameContains = null; folderScope = variant { Any }; tagsContainsAny = null; contentType = null; statusFilter = null; uploadedAfter = null; uploadedBefore = null; uploadedBy = null }, 0 : nat, 10 : nat)")
+check "unarchived item1 back in default list" "Master Contract Template" "$R"
+echo ""
+
+# ── Step 117: deleteLibraryItem — Partner only; deleted item blocks deleteFolder ─
+echo "Step 117: Associate cannot delete item; Partner can; deleted item blocks folder delete"
+LIB_BLOB4=$(mktemp /tmp/tp_smoke_XXXXXX.bin)
+printf 'Item three for delete test.' > "$LIB_BLOB4"
+LIB_BLOB4_SIZE=$(wc -c < "$LIB_BLOB4")
+R=$(icp canister call backend startLibraryUpload \
+  "(\"Delete Test Item\", opt ($LIB_F1 : nat), vec {}, \"for delete testing\", \"del.pdf\", \"application/pdf\", $LIB_BLOB4_SIZE : nat, \"\", null)")
+check "startLibraryUpload item3 ok" "ok" "$R"
+LIB_S4=$(echo "$R" | python3 -c "import sys,re; m=re.search(r'ok\s*=\s*(\d+)',sys.stdin.read()); print(m.group(1) if m else '4')")
+LIB_ARGS4=$(mktemp /tmp/tp_smoke_XXXXXX.did)
+make_chunk_args_file "$LIB_S4" 0 "$LIB_BLOB4" "$LIB_ARGS4"
+icp canister call backend appendLibraryChunk --args-file "$LIB_ARGS4" > /dev/null
+LIB_FINALIZE4=$(icp canister call backend finalizeLibraryUpload "($LIB_S4 : nat)")
+check "finalizeLibraryUpload item3 ok" "ok" "$LIB_FINALIZE4"
+LIB_ITEM3=$(echo "$LIB_FINALIZE4" | python3 -c "import sys,re; m=re.search(r'itemId\s*=\s*(\d+)',sys.stdin.read()); print(m.group(1) if m else '3')")
+R=$(icp canister call backend deleteLibraryItem "($LIB_ITEM3 : nat)" --identity smoke-doc-associate)
+check "Associate deleteLibraryItem rejected (Partner only)" "err" "$R"
+R=$(icp canister call backend deleteLibraryItem "($LIB_ITEM3 : nat)")
+check "Partner deleteLibraryItem ok" "ok" "$R"
+R=$(icp canister call backend listLibraryItems \
+  "(record { nameContains = null; currentFilenameContains = null; folderScope = variant { Any }; tagsContainsAny = null; contentType = null; statusFilter = null; uploadedAfter = null; uploadedBefore = null; uploadedBy = null }, 0 : nat, 10 : nat)")
+check_absent "deleted item3 excluded from default list" "Delete Test Item" "$R"
+# Soft-deleted item3 (in F1) blocks folder deletion
+R=$(icp canister call backend deleteFolder "($LIB_F1 : nat)")
+check "deleteFolder Contracts blocked (has soft-deleted + active items)" "err" "$R"
+check "blocked message mentions 'item'" "item" "$R"
+echo ""
+
+# ── Step 118: Download flow — prepareLibraryDownload + getLibraryChunk ─────────
+echo "Step 118: prepareLibraryDownload returns metadata; getLibraryChunk returns chunk bytes"
+DOWNLOAD=$(icp canister call backend prepareLibraryDownload "($LIB_V1 : nat)")
+check "prepareLibraryDownload ok" "ok" "$DOWNLOAD"
+check "prepareLibraryDownload has chunkCount field" "chunkCount" "$DOWNLOAD"
+check "prepareLibraryDownload has filename field" "filename" "$DOWNLOAD"
+DL_CHUNKS=$(echo "$DOWNLOAD" | python3 -c "import sys,re; m=re.search(r'chunkCount\s*=\s*(\d+)',sys.stdin.read()); print(m.group(1) if m else '1')")
+check "chunkCount = 1 for single-chunk file" "1" "$DL_CHUNKS"
+R=$(icp canister call backend getLibraryChunk "($LIB_V1 : nat, 0 : nat)")
+check "getLibraryChunk returns opt blob" "opt" "$R"
+# Out-of-range chunk returns null
+R=$(icp canister call backend getLibraryChunk "($LIB_V1 : nat, 999 : nat)")
+check "getLibraryChunk out-of-range returns null" "null" "$R"
+echo ""
+
+# ── Step 119: Download on #Archived ok; #Deleted chunk returns null ───────────
+echo "Step 119: prepareLibraryDownload on archived item ok; getLibraryChunk on deleted item null"
+R=$(icp canister call backend archiveLibraryItem "($LIB_ITEM1 : nat)")
+check "archive item1 for download test" "ok" "$R"
+R=$(icp canister call backend prepareLibraryDownload "($LIB_V3 : nat)")
+check "prepareLibraryDownload on archived item ok (SEC-INV-15)" "ok" "$R"
+R=$(icp canister call backend getLibraryChunk "($LIB_V3 : nat, 0 : nat)")
+check "getLibraryChunk archived item returns bytes" "opt" "$R"
+# item3 is deleted — its chunk must return null
+LIB_ITEM3_VLIST=$(icp canister call backend listLibraryVersions "($LIB_ITEM3 : nat)")
+LIB_ITEM3_VID=$(echo "$LIB_ITEM3_VLIST" | python3 -c "import sys,re; m=re.search(r'versionId\s*=\s*(\d+)',sys.stdin.read()); print(m.group(1) if m else '4')")
+R=$(icp canister call backend getLibraryChunk "($LIB_ITEM3_VID : nat, 0 : nat)")
+check "getLibraryChunk deleted item returns null (SEC-INV-15)" "null" "$R"
+R=$(icp canister call backend unarchiveLibraryItem "($LIB_ITEM1 : nat)")
+check "unarchive item1 after download test" "ok" "$R"
+echo ""
+
+# ── Step 120: searchLibrary — filter variants (FolderScope, tags, contentType) ─
+echo "Step 120: searchLibrary FolderScope Root/Folder; tagsContainsAny; contentType filter"
+# FolderScope #Root: item1 is at root, item2 is in Contracts
+R=$(icp canister call backend searchLibrary \
+  "(record { nameContains = null; currentFilenameContains = null; folderScope = variant { Root }; tagsContainsAny = null; contentType = null; statusFilter = null; uploadedAfter = null; uploadedBefore = null; uploadedBy = null }, 0 : nat, 10 : nat)")
+check "FolderScope Root finds root item1" "Master Contract Template" "$R"
+check_absent "FolderScope Root excludes folder item2" "Standard NDA" "$R"
+# FolderScope #Folder = F1 (Contracts): item2 in F1, item1 at root
+R=$(icp canister call backend searchLibrary \
+  "(record { nameContains = null; currentFilenameContains = null; folderScope = variant { Folder = $LIB_F1 : nat }; tagsContainsAny = null; contentType = null; statusFilter = null; uploadedAfter = null; uploadedBefore = null; uploadedBy = null }, 0 : nat, 10 : nat)")
+check "FolderScope Folder=Contracts finds item2" "Standard NDA" "$R"
+check_absent "FolderScope Folder=Contracts excludes root item1" "Master Contract Template" "$R"
+# tagsContainsAny filter
+R=$(icp canister call backend searchLibrary \
+  "(record { nameContains = null; currentFilenameContains = null; folderScope = variant { Any }; tagsContainsAny = opt vec {\"nda\"}; contentType = null; statusFilter = null; uploadedAfter = null; uploadedBefore = null; uploadedBy = null }, 0 : nat, 10 : nat)")
+check "tagsContainsAny=nda finds Standard NDA" "Standard NDA" "$R"
+check_absent "tagsContainsAny=nda excludes Contract Template (no nda tag)" "Master Contract Template" "$R"
+# contentType exact match
+R=$(icp canister call backend searchLibrary \
+  "(record { nameContains = null; currentFilenameContains = null; folderScope = variant { Any }; tagsContainsAny = null; contentType = opt \"application/msword\"; statusFilter = null; uploadedAfter = null; uploadedBefore = null; uploadedBy = null }, 0 : nat, 10 : nat)")
+check "contentType=msword finds Standard NDA" "Standard NDA" "$R"
+check_absent "contentType=msword excludes pdf item1" "Master Contract Template" "$R"
+echo ""
+
+# ── Step 121: searchLibrary — FolderScope Subtree + pagination ────────────────
+echo "Step 121: FolderScope Subtree includes items in folder and descendants; cursor pagination"
+# Subtree of F1 (Contracts) — item2 is directly in F1; item1 is at root (excluded)
+R=$(icp canister call backend searchLibrary \
+  "(record { nameContains = null; currentFilenameContains = null; folderScope = variant { Subtree = $LIB_F1 : nat }; tagsContainsAny = null; contentType = null; statusFilter = null; uploadedAfter = null; uploadedBefore = null; uploadedBy = null }, 0 : nat, 10 : nat)")
+check "FolderScope Subtree=Contracts finds item2 in F1" "Standard NDA" "$R"
+check_absent "FolderScope Subtree=Contracts excludes root item1" "Master Contract Template" "$R"
+# Cursor pagination: page 1 (after=0, limit=1) then page 2
+R_P1=$(icp canister call backend searchLibrary \
+  "(record { nameContains = null; currentFilenameContains = null; folderScope = variant { Any }; tagsContainsAny = null; contentType = null; statusFilter = null; uploadedAfter = null; uploadedBefore = null; uploadedBy = null }, 0 : nat, 1 : nat)")
+check "page1 limit=1 returns a result" "Master Contract Template\|Standard NDA" "$R_P1"
+P1_LAST=$(echo "$R_P1" | python3 -c "
+import sys,re
+ids = [int(m.group(1)) for m in re.finditer(r'\bid\s*=\s*(\d+)\s*:', sys.stdin.read())]
+print(max(ids) if ids else 0)
+")
+R_P2=$(icp canister call backend searchLibrary \
+  "(record { nameContains = null; currentFilenameContains = null; folderScope = variant { Any }; tagsContainsAny = null; contentType = null; statusFilter = null; uploadedAfter = null; uploadedBefore = null; uploadedBy = null }, $P1_LAST : nat, 1 : nat)")
+check "page2 returns a different result via cursor" "Master Contract Template\|Standard NDA" "$R_P2"
+echo ""
+
+# ── Step 122: appendLibraryChunk idempotency + abandonLibraryUpload ───────────
+echo "Step 122: appendLibraryChunk same index twice = ok (idempotent); abandon removes session"
+LIB_BLOB5=$(mktemp /tmp/tp_smoke_XXXXXX.bin)
+printf 'Abandon and idempotency test blob content.' > "$LIB_BLOB5"
+LIB_BLOB5_SIZE=$(wc -c < "$LIB_BLOB5")
+R=$(icp canister call backend startLibraryUpload \
+  "(\"Temp Upload\", null, vec {}, \"for abandon test\", \"temp.pdf\", \"application/pdf\", $LIB_BLOB5_SIZE : nat, \"\", null)")
+check "startLibraryUpload for idempotency/abandon test ok" "ok" "$R"
+LIB_S5=$(echo "$R" | python3 -c "import sys,re; m=re.search(r'ok\s*=\s*(\d+)',sys.stdin.read()); print(m.group(1) if m else '5')")
+LIB_ARGS5=$(mktemp /tmp/tp_smoke_XXXXXX.did)
+make_chunk_args_file "$LIB_S5" 0 "$LIB_BLOB5" "$LIB_ARGS5"
+R=$(icp canister call backend appendLibraryChunk --args-file "$LIB_ARGS5")
+check "first appendLibraryChunk ok" "ok" "$R"
+R=$(icp canister call backend appendLibraryChunk --args-file "$LIB_ARGS5")
+check "second appendLibraryChunk same chunk ok (idempotent)" "ok" "$R"
+R=$(icp canister call backend abandonLibraryUpload "($LIB_S5 : nat)")
+check "abandonLibraryUpload ok" "ok" "$R"
+R=$(icp canister call backend finalizeLibraryUpload "($LIB_S5 : nat)")
+check "finalizeLibraryUpload after abandon returns err (session gone)" "err" "$R"
+echo ""
+
+# ── Step 123: Caller-lock — session owner check ───────────────────────────────
+echo "Step 123: smoke-partner cannot append/abandon smoke-master's session (SEC-INV-5)"
+R=$(icp canister call backend startLibraryUpload \
+  "(\"Owner Test\", null, vec {}, \"\", \"owner.pdf\", \"application/pdf\", 1 : nat, \"\", null)")
+check "startLibraryUpload by master ok" "ok" "$R"
+LIB_S6=$(echo "$R" | python3 -c "import sys,re; m=re.search(r'ok\s*=\s*(\d+)',sys.stdin.read()); print(m.group(1) if m else '6')")
+LIB_BLOB6=$(mktemp /tmp/tp_smoke_XXXXXX.bin)
+printf 'x' > "$LIB_BLOB6"
+LIB_ARGS6=$(mktemp /tmp/tp_smoke_XXXXXX.did)
+make_chunk_args_file "$LIB_S6" 0 "$LIB_BLOB6" "$LIB_ARGS6"
+R=$(icp canister call backend appendLibraryChunk --args-file "$LIB_ARGS6" --identity smoke-partner)
+check "smoke-partner cannot append to master session" "err" "$R"
+check "caller-lock error text present" "owner" "$R"
+R=$(icp canister call backend abandonLibraryUpload "($LIB_S6 : nat)" --identity smoke-partner)
+check "smoke-partner cannot abandon master session" "err" "$R"
+R=$(icp canister call backend abandonLibraryUpload "($LIB_S6 : nat)")
+check "master can abandon own session" "ok" "$R"
+echo ""
+
+# ── Step 124: Budget enforcement — zero-size and per-item ceiling ─────────────
+echo "Step 124: zero-size upload rejected; 5 GiB+1 per-item ceiling rejected"
+R=$(icp canister call backend startLibraryUpload \
+  "(\"Empty\", null, vec {}, \"\", \"empty.pdf\", \"application/pdf\", 0 : nat, \"\", null)")
+check "zero-size upload rejected" "err" "$R"
+OVER_LIMIT=$((5368709120 + 1))
+R=$(icp canister call backend startLibraryUpload \
+  "(\"Over Limit\", null, vec {}, \"\", \"big.bin\", \"application/octet-stream\", $OVER_LIMIT : nat, \"\", null)")
+check "5 GiB+1 upload rejected (per-item ceiling)" "err" "$R"
+check "ceiling error mentions 'too large'" "too large" "$R"
+echo ""
+
+# ── Step 125: Export manifest — Library fields present and correct ─────────────
+echo "Step 125: createExportManifest includes Library fields (totalFolders=5, totalLibraryItems=3)"
+EXP=$(icp canister call backend createExportManifest "()")
+check "createExportManifest ok" "ok" "$EXP"
+check "manifest has totalFolders field" "totalFolders" "$EXP"
+check "manifest has totalLibraryItems field" "totalLibraryItems" "$EXP"
+check "manifest has totalLibraryVersions field" "totalLibraryVersions" "$EXP"
+check "manifest has folders list" "folders" "$EXP"
+check "manifest has libraryItems list" "libraryItems" "$EXP"
+EXP_TF=$(echo "$EXP" | python3 -c "import sys,re; m=re.search(r'totalFolders\s*=\s*(\d+)',sys.stdin.read()); print(m.group(1) if m else '?')")
+check "manifest totalFolders = 5" "5" "$EXP_TF"
+EXP_TI=$(echo "$EXP" | python3 -c "import sys,re; m=re.search(r'totalLibraryItems\s*=\s*(\d+)',sys.stdin.read()); print(m.group(1) if m else '?')")
+check "manifest totalLibraryItems = 3 (including soft-deleted)" "3" "$EXP_TI"
+EXP_TV=$(echo "$EXP" | python3 -c "import sys,re; m=re.search(r'totalLibraryVersions\s*=\s*(\d+)',sys.stdin.read()); print(m.group(1) if m else '?')")
+check "manifest totalLibraryVersions = 4" "4" "$EXP_TV"
+echo ""
+
+# ── Step 126: Audit trail — Library action entries present ────────────────────
+echo "Step 126: audit log contains expected Firm Library action entries"
+AUDIT=$(icp canister call backend readAuditEntries "(0 : nat, 1000 : nat)")
+check "audit has folder.create entry" "folder.create" "$AUDIT"
+check "audit has folder.rename entry" "folder.rename" "$AUDIT"
+check "audit has folder.move entry" "folder.move" "$AUDIT"
+check "audit has folder.delete entry" "folder.delete" "$AUDIT"
+check "audit has library.upload entry" "library.upload" "$AUDIT"
+check "audit has library.archive entry" "library.archive" "$AUDIT"
+check "audit has library.unarchive entry" "library.unarchive" "$AUDIT"
+check "audit has library.delete entry" "library.delete" "$AUDIT"
+check "audit has library.download entry" "library.download" "$AUDIT"
+echo ""
+
 # ── Summary ──────────────────────────────────────────────────────────────────
 echo "=== Results: $PASS passed, $FAIL failed ==="
 if [ "$FAIL" -gt 0 ]; then

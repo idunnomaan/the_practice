@@ -11,7 +11,25 @@ afterward. No application code is involved.
 
 Every `let` and `var` declared directly on the actor. This includes identity and control
 state, the audit ledger, client and matter records, document versions and chunk data,
-in-flight upload sessions, and storage accounting counters.
+in-flight upload sessions, storage accounting counters, and the Firm Library state
+added in Phase 1.5 (see table below).
+
+### Firm Library state fields (Phase 1.5)
+
+| Field | Type | Role |
+|---|---|---|
+| `folders` | `MutMap<Nat, Folder>` | All folders; hard-deleted on `deleteFolder` after empty check |
+| `libraryItems` | `MutMap<Nat, LibraryItem>` | All items including soft-deleted (`#Deleted`) |
+| `libraryVersions` | `MutMap<Nat, LibraryVersion>` | All versions; each stores the full `Blob` |
+| `libraryVersionsByItem` | `MutMap<Nat, [Nat]>` | Ordered version IDs per item (append-only) |
+| `libraryUploadSessions` | `MutMap<Nat, LibraryUploadSession>` | In-flight sessions; deleted on finalize or abandon (separate from L2b `uploadSessions`) |
+| `nextFolderId` | `Nat` | Monotone counter; never reused |
+| `nextLibraryItemId` | `Nat` | Monotone counter; never reused |
+| `nextLibraryVersionId` | `Nat` | Monotone counter; never reused |
+| `nextLibrarySessionId` | `Nat` | Monotone counter; never reused |
+
+The shared storage budget (`totalStorageUsedBytes`, `storageBudgetBytes`) is declared in
+L2b and covers both document uploads and library item uploads (Q8 decision).
 
 ## What does NOT persist
 

@@ -8,29 +8,45 @@ type UserRecord =
 type Time = int;
 type ThePractice = 
  service {
+   abandonLibraryUpload: (sessionId: nat) -> (Result);
    abandonUpload: (sessionId: nat) -> (Result);
+   addLibraryItemTag: (itemId: nat, tag: text) -> (Result);
    addUser: (p: principal, role: Role) -> (Result);
    appendChunk: (sessionId: nat, chunkIndex: nat, chunkBytes: blob) ->
     (Result);
+   appendLibraryChunk: (sessionId: nat, chunkIndex: nat, chunkBytes: 
+    blob) -> (Result);
+   archiveLibraryItem: (itemId: nat) -> (Result);
    archiveMatter: (id: nat) -> (Result);
    assignPartnerToMatter: (id: nat, partner: opt principal) -> (Result);
    clientsByStatus: () -> (ClientStatusCounts) query;
    closeMatter: (id: nat) -> (Result);
    createClient: (name: text, clientType: ClientType, primaryEmail: opt text,
     primaryPhone: opt text, identifier: opt text, notes: text) -> (Result_1);
-   createExportManifest: () -> (Result_5);
+   createExportManifest: () -> (Result_7);
+   createFolder: (name: text, parentId: opt nat) -> (Result_1);
    createMatter: (title: text, matterType: text, clientId: nat,
     assignedPartner: opt principal, description: text) -> (Result_1);
    deactivateClient: (id: nat) -> (Result);
    deleteDocument: (documentId: nat) -> (Result);
+   deleteFolder: (folderId: nat) -> (Result);
+   deleteLibraryItem: (itemId: nat) -> (Result);
    documentsByStatus: () -> (DocumentStatusCounts) query;
-   finalizeUpload: (sessionId: nat) -> (Result_4);
+   finalizeLibraryUpload: (sessionId: nat) -> (Result_6);
+   finalizeUpload: (sessionId: nat) -> (Result_5);
    getChunk: (versionId: nat, chunkIndex: nat) -> (opt blob) query;
    getClient: (id: nat) -> (opt Client) query;
    getClientCount: () -> (nat) query;
    getDocument: (id: nat) -> (opt Document) query;
    getDocumentCount: () -> (nat) query;
    getDocumentVersion: (versionId: nat) -> (opt DocumentVersion) query;
+   getFolder: (folderId: nat) -> (opt Folder) query;
+   getFolderCount: () -> (nat) query;
+   getFolderDepth: (folderId: nat) -> (opt nat) query;
+   getLibraryChunk: (versionId: nat, chunkIndex: nat) -> (opt blob) query;
+   getLibraryItem: (id: nat) -> (opt LibraryItem) query;
+   getLibraryItemCount: () -> (nat) query;
+   getLibraryVersion: (versionId: nat) -> (opt LibraryVersion) query;
    getMasterController: () -> (principal) query;
    getMatter: (id: nat) -> (opt Matter) query;
    getMatterCount: () -> (nat) query;
@@ -40,10 +56,15 @@ type ThePractice =
    getStorageUsed: () -> (nat) query;
    getUserCount: () -> (nat) query;
    grantOperations: (p: principal) -> (Result);
+   listAllFolders: () -> (vec Folder) query;
    listClients: (after: nat, limit: nat, includeInactive: bool) ->
     (vec Client) query;
    listDocumentsByMatter: (matterId: nat, after: nat, limit: nat,
     includeDeleted: bool) -> (vec Document) query;
+   listFolderContents: (scope: FolderScope) -> (FolderListing) query;
+   listLibraryItems: (filter: LibraryFilter, after: nat, limit: nat) ->
+    (vec LibraryItemSearchResult) query;
+   listLibraryVersions: (itemId: nat) -> (vec LibraryVersion) query;
    listMatters: (after: nat, limit: nat, statusFilter: opt MatterStatus) ->
     (vec Matter) query;
    listMattersByClient: (clientId: nat, after: nat, limit: nat, statusFilter:
@@ -54,11 +75,17 @@ type ThePractice =
                          }) query;
    listVersions: (documentId: nat) -> (vec DocumentVersion) query;
    mattersByStatus: () -> (MatterStatusCounts) query;
-   prepareDocumentDownload: (versionId: nat) -> (Result_3);
+   moveFolder: (folderId: nat, newParentId: opt nat) -> (Result);
+   moveLibraryItem: (itemId: nat, newFolderId: opt nat) -> (Result);
+   prepareDocumentDownload: (versionId: nat) -> (Result_4);
+   prepareLibraryDownload: (versionId: nat) -> (Result_3);
    putMatterOnHold: (id: nat) -> (Result);
    reactivateClient: (id: nat) -> (Result);
    readAuditEntries: (after: nat, limit: nat) -> (Result_2);
+   removeLibraryItemTag: (itemId: nat, tag: text) -> (Result);
    removeUser: (p: principal) -> (Result);
+   renameFolder: (folderId: nat, newName: text) -> (Result);
+   renameLibraryItem: (itemId: nat, newName: text) -> (Result);
    reopenMatter: (id: nat) -> (Result);
    resumeMatter: (id: nat) -> (Result);
    revokeOperations: () -> (Result);
@@ -66,19 +93,28 @@ type ThePractice =
     (vec Client) query;
    searchDocuments: (filter: DocumentFilter, after: nat, limit: nat) ->
     (vec DocumentSearchResult) query;
+   searchLibrary: (filter: LibraryFilter, after: nat, limit: nat) ->
+    (vec LibraryItemSearchResult) query;
    searchMatters: (filter: MatterFilter, after: nat, limit: nat) ->
     (vec Matter) query;
+   setLibraryItemTags: (itemId: nat, tags: vec text) -> (Result);
    setStorageBudget: (newBudgetBytes: nat) -> (Result);
    setUserRole: (p: principal, role: Role) -> (Result);
+   startLibraryUpload: (name: text, folderId: opt nat, tags: vec text,
+    description: text, filename: text, contentType: text, totalSizeBytes:
+    nat, uploadNotes: text, replacesItemId: opt nat) -> (Result_1);
    startUpload: (matterId: nat, filename: text, contentType: text,
     totalSizeBytes: nat, uploadNotes: text, replacesDocumentId: opt nat) ->
     (Result_1);
    suspendUser: (p: principal) -> (Result);
    transferMasterController: (p: principal) -> (Result);
+   unarchiveLibraryItem: (itemId: nat) -> (Result);
    unsuspendUser: (p: principal) -> (Result);
    updateClient: (id: nat, name: opt text, clientType: opt ClientType,
     primaryEmail: opt text, primaryPhone: opt text, identifier: opt text,
     notes: opt text) -> (Result);
+   updateLibraryItemDescription: (itemId: nat, newDescription: text) ->
+    (Result);
    updateMatter: (id: nat, title: opt text, matterType: opt text, clientId:
     opt nat, assignedPartner: opt opt principal, description: opt text) ->
     (Result);
@@ -90,12 +126,21 @@ type Role =
    Partner;
    Staff;
  };
-type Result_5 = 
+type Result_7 = 
  variant {
    err: text;
    ok: ExportManifest;
  };
-type Result_4 = 
+type Result_6 = 
+ variant {
+   err: text;
+   ok: record {
+         itemId: nat;
+         sha256: blob;
+         versionId: nat;
+       };
+ };
+type Result_5 = 
  variant {
    err: text;
    ok: record {
@@ -104,7 +149,7 @@ type Result_4 =
          versionId: nat;
        };
  };
-type Result_3 = 
+type Result_4 = 
  variant {
    err: text;
    ok:
@@ -115,6 +160,20 @@ type Result_3 =
       filename: text;
       sha256: blob;
       sizeBytes: nat;
+    };
+ };
+type Result_3 = 
+ variant {
+   err: text;
+   ok:
+    record {
+      chunkCount: nat;
+      contentType: text;
+      filename: text;
+      itemId: nat;
+      sha256: blob;
+      sizeBytes: nat;
+      versionId: nat;
     };
  };
 type Result_2 = 
@@ -174,6 +233,75 @@ type Matter =
    status: MatterStatus;
    title: text;
  };
+type LibraryVersion = 
+ record {
+   "blob": blob;
+   contentType: text;
+   filename: text;
+   itemId: nat;
+   sha256: blob;
+   sizeBytes: nat;
+   uploadNotes: text;
+   uploadedAt: Time;
+   uploadedBy: principal;
+   versionId: nat;
+   versionNumber: nat;
+ };
+type LibraryItemStatus = 
+ variant {
+   Active;
+   Archived;
+   Deleted;
+ };
+type LibraryItemSearchResult = 
+ record {
+   currentVersion: LibraryVersion;
+   item: LibraryItem;
+ };
+type LibraryItem = 
+ record {
+   createdAt: Time;
+   createdBy: principal;
+   currentVersionId: nat;
+   description: text;
+   folderId: opt nat;
+   id: nat;
+   name: text;
+   status: LibraryItemStatus;
+   tags: vec text;
+ };
+type LibraryFilter = 
+ record {
+   contentType: opt text;
+   currentFilenameContains: opt text;
+   folderScope: FolderScope;
+   nameContains: opt text;
+   statusFilter: opt LibraryItemStatus;
+   tagsContainsAny: opt vec text;
+   uploadedAfter: opt Time;
+   uploadedBefore: opt Time;
+   uploadedBy: opt principal;
+ };
+type FolderScope = 
+ variant {
+   Any;
+   Folder: nat;
+   Root;
+   Subtree: nat;
+ };
+type FolderListing = 
+ record {
+   folders: vec Folder;
+   items: vec LibraryItemSearchResult;
+ };
+type Folder = 
+ record {
+   createdAt: Time;
+   createdBy: principal;
+   id: nat;
+   name: text;
+   parentId: opt nat;
+ };
 type ExportManifest = 
  record {
    clientIds: vec nat;
@@ -181,8 +309,13 @@ type ExportManifest =
                     documentId: nat;
                     versionIds: vec nat;
                   };
+   folders: vec Folder;
    generatedAt: Time;
    generatedBy: principal;
+   libraryItems: vec record {
+                       itemId: nat;
+                       versionIds: vec nat;
+                     };
    masterController: principal;
    matterIds: vec nat;
    operationsPrincipal: opt principal;
@@ -191,6 +324,9 @@ type ExportManifest =
    totalAuditEntries: nat;
    totalClients: nat;
    totalDocuments: nat;
+   totalFolders: nat;
+   totalLibraryItems: nat;
+   totalLibraryVersions: nat;
    totalMatters: nat;
    totalVersions: nat;
    userPrincipals: vec principal;

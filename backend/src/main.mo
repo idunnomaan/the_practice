@@ -18,6 +18,7 @@ import MatterModule "./Matter";
 import DocumentModule "./Document";
 import Search "./Search";
 import Export "./Export";
+import Library "./Library";
 
 shared(installer) persistent actor class ThePractice(
   masterControllerArg : Principal
@@ -46,6 +47,17 @@ shared(installer) persistent actor class ThePractice(
   type ClientStatusCounts = Search.ClientStatusCounts;
   type DocumentStatusCounts = Search.DocumentStatusCounts;
   type ExportManifest = Export.ExportManifest;
+
+  // Firm Library types (Phase 1.5)
+  type LibraryItemStatus = Library.LibraryItemStatus;
+  type Folder = Library.Folder;
+  type LibraryItem = Library.LibraryItem;
+  type LibraryVersion = Library.LibraryVersion;
+  type LibraryUploadSession = Library.LibraryUploadSession;
+  type FolderScope = Library.FolderScope;
+  type LibraryFilter = Library.LibraryFilter;
+  type LibraryItemSearchResult = Library.LibraryItemSearchResult;
+  type FolderListing = Library.FolderListing;
 
   // INV-1: anonymous principal cannot hold any identity — trap at install if anonymous
   assert not Principal.isAnonymous(masterControllerArg);
@@ -95,6 +107,18 @@ shared(installer) persistent actor class ThePractice(
   var nextSessionId : Nat = 1;
   var totalStorageUsedBytes : Nat = 0;
   var storageBudgetBytes : Nat = DocumentModule.DEFAULT_STORAGE_BUDGET;
+
+  // Firm Library state (Phase 1.5) — all `let` bindings persist via EOP (same as L2b).
+  // Storage counters (totalStorageUsedBytes, storageBudgetBytes) are SHARED with L2b (Q8).
+  let folders = MutMap.empty<Nat, Folder>();
+  let libraryItems = MutMap.empty<Nat, LibraryItem>();
+  let libraryVersions = MutMap.empty<Nat, LibraryVersion>();
+  let libraryVersionsByItem = MutMap.empty<Nat, [Nat]>(); // itemId → ordered list of versionIds
+  let libraryUploadSessions = MutMap.empty<Nat, LibraryUploadSession>(); // separate from uploadSessions (Q10)
+  var nextFolderId : Nat = 1;
+  var nextLibraryItemId : Nat = 1;
+  var nextLibraryVersionId : Nat = 1;
+  var nextLibrarySessionId : Nat = 1;
 
   // ── Audit helpers ─────────────────────────────────────────────────────────
   // SEC-INV-1: auditOk and auditErr are the only write paths into auditLog (append-only).
@@ -1625,6 +1649,715 @@ shared(installer) persistent actor class ThePractice(
     { active; deleted }
   };
 
+  // ── Firm Library — Folder queries (not audited) ──────────────────────────
+  // SEC-INV-1: trap on anonymous (queries can't audit).
+
+  public query ({ caller }) func getFolder(folderId : Nat) : async ?Folder {
+    switch (Auth.requireAuthenticated(caller)) { case (#err(_)) assert false; case (#ok) {} };
+    MutMap.get(folders, Nat.compare, folderId)
+  };
+
+  public query ({ caller }) func listAllFolders() : async [Folder] {
+    switch (Auth.requireAuthenticated(caller)) { case (#err(_)) assert false; case (#ok) {} };
+    Iter.toArray(Iter.map(MutMap.entries(folders), func((_, f) : (Nat, Folder)) : Folder { f }))
+  };
+
+  // #Root: root-level folders + root items; #Folder id: children of id + items in id.
+  // #Any / #Subtree: undefined for this method — returns empty FolderListing.
+  public query ({ caller }) func listFolderContents(scope : FolderScope) : async FolderListing {
+    switch (Auth.requireAuthenticated(caller)) { case (#err(_)) assert false; case (#ok) {} };
+    switch scope {
+      case (#Root) {
+        let childFolders = Iter.toArray(Iter.map(
+          Iter.filter(MutMap.entries(folders), func((_, f) : (Nat, Folder)) : Bool { f.parentId == null }),
+          func((_, f) : (Nat, Folder)) : Folder { f }
+        ));
+        let rootItems = Iter.toArray(Iter.filterMap<(Nat, LibraryItem), LibraryItemSearchResult>(
+          MutMap.entries(libraryItems),
+          func((_, item) : (Nat, LibraryItem)) : ?LibraryItemSearchResult {
+            if (item.folderId != null or item.status == #Deleted) return null;
+            switch (MutMap.get(libraryVersions, Nat.compare, item.currentVersionId)) {
+              case null null;
+              case (?v) ?{ item; currentVersion = Library.stripBlobFromLibraryVersion(v) };
+            };
+          }
+        ));
+        { folders = childFolders; items = rootItems }
+      };
+      case (#Folder fid) {
+        let childFolders = Iter.toArray(Iter.map(
+          Iter.filter(MutMap.entries(folders), func((_, f) : (Nat, Folder)) : Bool { f.parentId == ?fid }),
+          func((_, f) : (Nat, Folder)) : Folder { f }
+        ));
+        let folderItems = Iter.toArray(Iter.filterMap<(Nat, LibraryItem), LibraryItemSearchResult>(
+          MutMap.entries(libraryItems),
+          func((_, item) : (Nat, LibraryItem)) : ?LibraryItemSearchResult {
+            if (item.folderId != ?fid or item.status == #Deleted) return null;
+            switch (MutMap.get(libraryVersions, Nat.compare, item.currentVersionId)) {
+              case null null;
+              case (?v) ?{ item; currentVersion = Library.stripBlobFromLibraryVersion(v) };
+            };
+          }
+        ));
+        { folders = childFolders; items = folderItems }
+      };
+      case _ { { folders = []; items = [] } };  // #Any/#Subtree undefined for this method
+    }
+  };
+
+  public query ({ caller }) func getFolderDepth(folderId : Nat) : async ?Nat {
+    switch (Auth.requireAuthenticated(caller)) { case (#err(_)) assert false; case (#ok) {} };
+    switch (MutMap.get(folders, Nat.compare, folderId)) {
+      case null null;
+      case (?_) ?computeFolderDepth(folderId);
+    }
+  };
+
+  public query ({ caller }) func getFolderCount() : async Nat {
+    switch (Auth.requireAuthenticated(caller)) { case (#err(_)) assert false; case (#ok) {} };
+    MutMap.size(folders)
+  };
+
+  // ── Firm Library — Item queries (not audited) ─────────────────────────────
+
+  public query ({ caller }) func getLibraryItem(id : Nat) : async ?LibraryItem {
+    switch (Auth.requireAuthenticated(caller)) { case (#err(_)) assert false; case (#ok) {} };
+    MutMap.get(libraryItems, Nat.compare, id)
+  };
+
+  public query ({ caller }) func listLibraryItems(filter : LibraryFilter, after : Nat, limit : Nat) : async [LibraryItemSearchResult] {
+    switch (Auth.requireAuthenticated(caller)) { case (#err(_)) assert false; case (#ok) {} };
+    doSearchLibrary(filter, after, limit)
+  };
+
+  // Returns full version including blob — for inspection. Use prepareLibraryDownload + getLibraryChunk for download.
+  public query ({ caller }) func getLibraryVersion(versionId : Nat) : async ?LibraryVersion {
+    switch (Auth.requireAuthenticated(caller)) { case (#err(_)) assert false; case (#ok) {} };
+    MutMap.get(libraryVersions, Nat.compare, versionId)
+  };
+
+  // Blob stripped; use getLibraryChunk for actual bytes.
+  public query ({ caller }) func listLibraryVersions(itemId : Nat) : async [LibraryVersion] {
+    switch (Auth.requireAuthenticated(caller)) { case (#err(_)) assert false; case (#ok) {} };
+    let vids : [Nat] = switch (MutMap.get(libraryVersionsByItem, Nat.compare, itemId)) {
+      case null [];
+      case (?arr) arr;
+    };
+    Array.filterMap<Nat, LibraryVersion>(vids, func(vid) {
+      switch (MutMap.get(libraryVersions, Nat.compare, vid)) {
+        case null null;
+        case (?v) ?Library.stripBlobFromLibraryVersion(v);
+      };
+    })
+  };
+
+  public query ({ caller }) func getLibraryItemCount() : async Nat {
+    switch (Auth.requireAuthenticated(caller)) { case (#err(_)) assert false; case (#ok) {} };
+    MutMap.size(libraryItems)
+  };
+
+  // SEC-INV-18: blob slicing via iterator (NOT Blob.toArray()) — critical for 5 GiB files.
+  // SEC-INV-15: allows #Active and #Archived; rejects #Deleted (returns null). Not audited per chunk.
+  public query ({ caller }) func getLibraryChunk(versionId : Nat, chunkIndex : Nat) : async ?Blob {
+    switch (Auth.requireAuthenticated(caller)) { case (#err(_)) assert false; case (#ok) {} };
+    switch (requireRole(caller, #Staff)) { case (#err(_)) assert false; case (#ok) {} };
+    switch (MutMap.get(libraryVersions, Nat.compare, versionId)) {
+      case null null;
+      case (?version) {
+        switch (MutMap.get(libraryItems, Nat.compare, version.itemId)) {
+          case null null;
+          case (?item) {
+            if (item.status == #Deleted) return null;
+            let count = DocumentModule.expectedChunkCount(version.sizeBytes);
+            if (chunkIndex >= count) return null;
+            let (startByte, endByte) = DocumentModule.chunkRange(chunkIndex, version.sizeBytes);
+            let chunkSize = endByte - startByte;
+            let result = VarArray.repeat<Nat8>(0, chunkSize);
+            var bytePos : Nat = 0;
+            var writePos : Nat = 0;
+            label sliceLoop for (b in version.blob.values()) {
+              if (bytePos >= endByte) break sliceLoop;
+              if (bytePos >= startByte) {
+                result[writePos] := b;
+                writePos += 1;
+              };
+              bytePos += 1;
+            };
+            ?Blob.fromVarArray(result)
+          };
+        };
+      };
+    };
+  };
+
+  // ── Firm Library — Search (not audited) ───────────────────────────────────
+  // SEC-INV-21: matches current version only — older versions not searched.
+  // SEC-INV-19: limit capped at 1000.
+
+  public query ({ caller }) func searchLibrary(filter : LibraryFilter, after : Nat, limit : Nat) : async [LibraryItemSearchResult] {
+    switch (Auth.requireAuthenticated(caller)) { case (#err(_)) assert false; case (#ok) {} };
+    doSearchLibrary(filter, after, limit)
+  };
+
+  // ── Firm Library — Folder updates (audited) ───────────────────────────────
+  // SEC-INV-2: Associate or higher for create/rename/move; Partner only for delete.
+  // SEC-INV-17: every mutator emits exactly one audit entry.
+  // SEC-INV-20: no Runtime.trap on mutator path — all errors return Result.
+
+  public shared ({ caller }) func createFolder(name : Text, parentId : ?Nat) : async Result.Result<Nat, Text> {
+    switch (Auth.requireAuthenticated(caller)) { case (#err(e)) { auditErr(caller, "folder.create", null, e); return #err(e) }; case (#ok) {} };
+    switch (requireRole(caller, #Associate)) { case (#err(e)) { auditErr(caller, "folder.create", null, e); return #err(e) }; case (#ok) {} };
+    switch (Library.validateFolderName(name)) {
+      case (#err(e)) { auditErr(caller, "folder.create", null, e); return #err(e) };
+      case (#ok) {};
+    };
+    // SEC-INV-11: depth check
+    switch (parentId) {
+      case null {};  // depth = 1, always OK
+      case (?pid) {
+        switch (lookupFolder(pid)) {
+          case (#err(e)) { auditErr(caller, "folder.create", null, e); return #err(e) };
+          case (#ok(_)) {
+            if (computeFolderDepth(pid) + 1 > Library.MAX_FOLDER_DEPTH) {
+              let e = "folder depth exceeded: max depth is " # Nat.toText(Library.MAX_FOLDER_DEPTH);
+              auditErr(caller, "folder.create", null, e);
+              return #err(e);
+            };
+          };
+        };
+      };
+    };
+    let folderId = nextFolderId;
+    nextFolderId += 1;
+    MutMap.add(folders, Nat.compare, folderId, {
+      id = folderId; name; parentId;
+      createdAt = Time.now(); createdBy = caller;
+    });
+    auditOk(caller, "folder.create:" # Nat.toText(folderId), null);
+    #ok(folderId)
+  };
+
+  public shared ({ caller }) func renameFolder(folderId : Nat, newName : Text) : async Result.Result<(), Text> {
+    switch (Auth.requireAuthenticated(caller)) { case (#err(e)) { auditErr(caller, "folder.rename:" # Nat.toText(folderId), null, e); return #err(e) }; case (#ok) {} };
+    switch (requireRole(caller, #Associate)) { case (#err(e)) { auditErr(caller, "folder.rename:" # Nat.toText(folderId), null, e); return #err(e) }; case (#ok) {} };
+    let folder = switch (lookupFolder(folderId)) {
+      case (#err(e)) { auditErr(caller, "folder.rename:" # Nat.toText(folderId), null, e); return #err(e) };
+      case (#ok(f)) f;
+    };
+    switch (Library.validateFolderName(newName)) {
+      case (#err(e)) { auditErr(caller, "folder.rename:" # Nat.toText(folderId), null, e); return #err(e) };
+      case (#ok) {};
+    };
+    MutMap.add(folders, Nat.compare, folderId, { folder with name = newName });
+    auditOk(caller, "folder.rename:" # Nat.toText(folderId), null);
+    #ok(())
+  };
+
+  public shared ({ caller }) func moveFolder(folderId : Nat, newParentId : ?Nat) : async Result.Result<(), Text> {
+    let actionStr = "folder.move:" # Nat.toText(folderId);
+    switch (Auth.requireAuthenticated(caller)) { case (#err(e)) { auditErr(caller, actionStr, null, e); return #err(e) }; case (#ok) {} };
+    switch (requireRole(caller, #Associate)) { case (#err(e)) { auditErr(caller, actionStr, null, e); return #err(e) }; case (#ok) {} };
+    let folder = switch (lookupFolder(folderId)) {
+      case (#err(e)) { auditErr(caller, actionStr, null, e); return #err(e) };
+      case (#ok(f)) f;
+    };
+    // SEC-INV-12: cycle prevention — newParentId must not be folderId or any descendant
+    let candidateId = switch (newParentId) {
+      case null { 0 };  // moving to root; no cycle possible (0 is not a valid folder ID)
+      case (?pid) pid;
+    };
+    switch (newParentId) {
+      case (?pid) {
+        if (subtreeContains(folderId, pid)) {
+          let e = "cycle detected: cannot move folder into its own subtree";
+          auditErr(caller, actionStr, null, e);
+          return #err(e);
+        };
+        switch (lookupFolder(pid)) {
+          case (#err(e)) { auditErr(caller, actionStr, null, e); return #err(e) };
+          case (#ok(_)) {};
+        };
+        // Depth check: newParentDepth + subtreeDepth(folderId) + 1 ≤ MAX_FOLDER_DEPTH (spec §2 derived)
+        let newParentDepth = computeFolderDepth(pid);
+        if (newParentDepth + subtreeDepth(folderId) + 1 > Library.MAX_FOLDER_DEPTH) {
+          let e = "folder depth exceeded: move would push descendants beyond max depth " # Nat.toText(Library.MAX_FOLDER_DEPTH);
+          auditErr(caller, actionStr, null, e);
+          return #err(e);
+        };
+      };
+      case null {
+        // Moving to root: depth becomes 1; subtreeDepth + 1 ≤ MAX_FOLDER_DEPTH
+        if (subtreeDepth(folderId) + 1 > Library.MAX_FOLDER_DEPTH) {
+          let e = "folder depth exceeded: subtree too deep to place at root";
+          auditErr(caller, actionStr, null, e);
+          return #err(e);
+        };
+      };
+    };
+    ignore candidateId;
+    MutMap.add(folders, Nat.compare, folderId, { folder with parentId = newParentId });
+    let toStr = switch (newParentId) { case null "root"; case (?pid) Nat.toText(pid) };
+    auditOk(caller, actionStr # ":to:" # toStr, null);
+    #ok(())
+  };
+
+  // Partner only. Hard delete — folder records are tiny; soft-delete adds no value. SEC-INV-13.
+  public shared ({ caller }) func deleteFolder(folderId : Nat) : async Result.Result<(), Text> {
+    let actionStr = "folder.delete:" # Nat.toText(folderId);
+    switch (Auth.requireAuthenticated(caller)) { case (#err(e)) { auditErr(caller, actionStr, null, e); return #err(e) }; case (#ok) {} };
+    switch (requireRole(caller, #Partner)) { case (#err(e)) { auditErr(caller, actionStr, null, e); return #err(e) }; case (#ok) {} };
+    switch (lookupFolder(folderId)) {
+      case (#err(e)) { auditErr(caller, actionStr, null, e); return #err(e) };
+      case (#ok(_)) {};
+    };
+    switch (folderHasDependents(folderId)) {
+      case (?reason) {
+        let e = "folder not empty: " # reason;
+        auditErr(caller, actionStr, null, e);
+        return #err(e);
+      };
+      case null {};
+    };
+    MutMap.remove(folders, Nat.compare, folderId);
+    auditOk(caller, actionStr, null);
+    #ok(())
+  };
+
+  // ── Firm Library — Upload updates (session-based) ─────────────────────────
+  // SEC-INV-5: caller-locked sessions. SEC-INV-7: 5 GiB per-item ceiling. SEC-INV-6: shared budget.
+
+  public shared ({ caller }) func startLibraryUpload(
+    name : Text,
+    folderId : ?Nat,
+    tags : [Text],
+    description : Text,
+    filename : Text,
+    contentType : Text,
+    totalSizeBytes : Nat,
+    uploadNotes : Text,
+    replacesItemId : ?Nat
+  ) : async Result.Result<Nat, Text> {
+    switch (Auth.requireAuthenticated(caller)) { case (#err(e)) { auditErr(caller, "library.upload.start", null, e); return #err(e) }; case (#ok) {} };
+    switch (requireRole(caller, #Associate)) { case (#err(e)) { auditErr(caller, "library.upload.start", null, e); return #err(e) }; case (#ok) {} };
+    // SEC-INV-7: size ceiling (reject zero and over-limit)
+    if (totalSizeBytes == 0) {
+      let e = "empty file: totalSizeBytes must be > 0";
+      auditErr(caller, "library.upload.start", null, e); return #err(e);
+    };
+    if (totalSizeBytes > Library.MAX_LIBRARY_ITEM_SIZE) {
+      let e = "file too large: exceeds 5 GiB library limit";
+      auditErr(caller, "library.upload.start", null, e); return #err(e);
+    };
+    // SEC-INV-8: content type validation
+    switch (Library.validateContentType(contentType)) {
+      case (#err(e)) { auditErr(caller, "library.upload.start", null, e); return #err(e) };
+      case (#ok) {};
+    };
+    // SEC-INV-6: shared budget check
+    switch (validateLibraryBudgetAvailable(totalSizeBytes)) {
+      case (#err(e)) { auditErr(caller, "library.upload.start", null, e); return #err(e) };
+      case (#ok) {};
+    };
+    // validate description length
+    if (description.size() > Library.MAX_LIBRARY_DESCRIPTION_LENGTH) {
+      let e = "description too long: max " # Nat.toText(Library.MAX_LIBRARY_DESCRIPTION_LENGTH) # " chars";
+      auditErr(caller, "library.upload.start", null, e); return #err(e);
+    };
+    // Validate per path: new item vs replacement
+    switch (replacesItemId) {
+      case null {
+        // New item: validate name, folder, tags
+        if (name.size() == 0 or name.size() > Library.MAX_LIBRARY_NAME_LENGTH) {
+          let e = "name must be 1–" # Nat.toText(Library.MAX_LIBRARY_NAME_LENGTH) # " chars";
+          auditErr(caller, "library.upload.start", null, e); return #err(e);
+        };
+        switch (folderId) {
+          case null {};
+          case (?fid) switch (lookupFolder(fid)) {
+            case (#err(e)) { auditErr(caller, "library.upload.start", null, e); return #err(e) };
+            case (#ok(_)) {};
+          };
+        };
+        switch (Library.validateTags(tags)) {
+          case (#err(e)) { auditErr(caller, "library.upload.start", null, e); return #err(e) };
+          case (#ok(_)) {};
+        };
+      };
+      case (?replaceId) {
+        // Replacement: item must exist and be #Active
+        switch (lookupLibraryItemActive(replaceId)) {
+          case (#err(e)) { auditErr(caller, "library.upload.start", null, e); return #err(e) };
+          case (#ok(_)) {};
+        };
+      };
+    };
+    let sessionId = nextLibrarySessionId;
+    nextLibrarySessionId += 1;
+    // Validate and normalise tags for the session record
+    let normalizedTags = switch (Library.validateTags(tags)) {
+      case (#err(_)) [];
+      case (#ok(t)) t;
+    };
+    MutMap.add(libraryUploadSessions, Nat.compare, sessionId, {
+      sessionId; name; folderId; tags = normalizedTags; description;
+      filename; contentType; totalSizeBytes;
+      expectedChunkCount = DocumentModule.expectedChunkCount(totalSizeBytes);
+      uploadNotes; replacesItemId;
+      chunks = Map.empty<Nat, Blob>();
+      startedAt = Time.now(); startedBy = caller;
+    });
+    auditOk(caller, "library.upload.start", null);
+    #ok(sessionId)
+  };
+
+  public shared ({ caller }) func appendLibraryChunk(
+    sessionId : Nat, chunkIndex : Nat, chunkBytes : Blob
+  ) : async Result.Result<(), Text> {
+    switch (Auth.requireAuthenticated(caller)) { case (#err(e)) { auditErr(caller, "appendLibraryChunk", null, e); return #err(e) }; case (#ok) {} };
+    switch (requireRole(caller, #Associate)) { case (#err(e)) { auditErr(caller, "appendLibraryChunk", null, e); return #err(e) }; case (#ok) {} };
+    let session = switch (MutMap.get(libraryUploadSessions, Nat.compare, sessionId)) {
+      case null { let e = "session " # Nat.toText(sessionId) # " not found"; auditErr(caller, "appendLibraryChunk", null, e); return #err(e) };
+      case (?s) s;
+    };
+    // SEC-INV-5: caller-lock
+    if (session.startedBy != caller) {
+      let e = "not the session owner"; auditErr(caller, "appendLibraryChunk", null, e); return #err(e);
+    };
+    if (chunkIndex >= session.expectedChunkCount) {
+      let e = "chunk index " # Nat.toText(chunkIndex) # " out of range";
+      auditErr(caller, "appendLibraryChunk", null, e); return #err(e);
+    };
+    // Chunk size validation: non-last = CHUNK_SIZE, last = remainder
+    let isLastChunk = chunkIndex == session.expectedChunkCount - 1;
+    let expectedSize = if (isLastChunk) {
+      session.totalSizeBytes - chunkIndex * DocumentModule.CHUNK_SIZE
+    } else DocumentModule.CHUNK_SIZE;
+    if (chunkBytes.size() != expectedSize) {
+      let e = "chunk " # Nat.toText(chunkIndex) # " wrong size: expected " # Nat.toText(expectedSize) # ", got " # Nat.toText(chunkBytes.size());
+      auditErr(caller, "appendLibraryChunk", null, e); return #err(e);
+    };
+    // Idempotent: last write wins (same as L2b)
+    let newChunks = Map.add(session.chunks, Nat.compare, chunkIndex, chunkBytes);
+    MutMap.add(libraryUploadSessions, Nat.compare, sessionId, { session with chunks = newChunks });
+    auditOk(caller, "appendLibraryChunk", null);
+    #ok(())
+  };
+
+  public shared ({ caller }) func finalizeLibraryUpload(
+    sessionId : Nat
+  ) : async Result.Result<{ itemId : Nat; versionId : Nat; sha256 : Blob }, Text> {
+    switch (Auth.requireAuthenticated(caller)) { case (#err(e)) { auditErr(caller, "library.upload:0", null, e); return #err(e) }; case (#ok) {} };
+    switch (requireRole(caller, #Associate)) { case (#err(e)) { auditErr(caller, "library.upload:0", null, e); return #err(e) }; case (#ok) {} };
+    let session = switch (MutMap.get(libraryUploadSessions, Nat.compare, sessionId)) {
+      case null { let e = "session " # Nat.toText(sessionId) # " not found"; auditErr(caller, "library.upload:0", null, e); return #err(e) };
+      case (?s) s;
+    };
+    if (session.startedBy != caller) {
+      let e = "not the session owner"; auditErr(caller, "library.upload:0", null, e); return #err(e);
+    };
+    // Completeness check
+    if (Map.size(session.chunks) != session.expectedChunkCount) {
+      let e = "upload incomplete: expected " # Nat.toText(session.expectedChunkCount) # " chunks, have " # Nat.toText(Map.size(session.chunks));
+      auditErr(caller, "library.upload:0", null, e); return #err(e);
+    };
+    var ci : Nat = 0;
+    while (ci < session.expectedChunkCount) {
+      if (Map.get(session.chunks, Nat.compare, ci) == null) {
+        let e = "upload incomplete: missing chunk " # Nat.toText(ci);
+        auditErr(caller, "library.upload:0", null, e); return #err(e);
+      };
+      ci += 1;
+    };
+    // Assemble blob via iterator — SEC-INV-18: never Blob.toArray() for library items
+    let assembled = VarArray.repeat<Nat8>(0, session.totalSizeBytes);
+    var writePos : Nat = 0;
+    ci := 0;
+    while (ci < session.expectedChunkCount) {
+      switch (Map.get(session.chunks, Nat.compare, ci)) {
+        case (?chunk) { for (b in chunk.values()) { assembled[writePos] := b; writePos += 1 } };
+        case null {};
+      };
+      ci += 1;
+    };
+    let assembledBlob = Blob.fromVarArray(assembled);
+    if (assembledBlob.size() != session.totalSizeBytes) {
+      let e = "assembled size mismatch";
+      auditErr(caller, "library.upload:0", null, e); return #err(e);
+    };
+    let sha256 = computeSha256(assembledBlob);
+    let now = Time.now();
+    // Create item and/or version
+    let (itemId, versionId) : (Nat, Nat) = switch (session.replacesItemId) {
+      case null {
+        // New item + v1 version
+        let iid = nextLibraryItemId;
+        let vid = nextLibraryVersionId;
+        nextLibraryItemId += 1;
+        nextLibraryVersionId += 1;
+        MutMap.add(libraryVersions, Nat.compare, vid, {
+          versionId = vid; itemId = iid; versionNumber = 1;
+          filename = session.filename; contentType = session.contentType;
+          sizeBytes = session.totalSizeBytes; blob = assembledBlob; sha256;
+          uploadedAt = now; uploadedBy = caller; uploadNotes = session.uploadNotes;
+        });
+        MutMap.add(libraryItems, Nat.compare, iid, {
+          id = iid; name = session.name; folderId = session.folderId;
+          tags = session.tags; description = session.description;
+          currentVersionId = vid; status = #Active;
+          createdAt = now; createdBy = caller;
+        });
+        appendVersionToLibraryItem(iid, vid);
+        (iid, vid)
+      };
+      case (?replaceId) {
+        // New version of existing item — re-validate still active
+        let item = switch (lookupLibraryItemActive(replaceId)) {
+          case (#err(e)) { auditErr(caller, "library.upload:0", null, e); return #err(e) };
+          case (#ok(i)) i;
+        };
+        let versionNumber = switch (MutMap.get(libraryVersionsByItem, Nat.compare, replaceId)) {
+          case null 2;
+          case (?arr) arr.size() + 1;
+        };
+        let vid = nextLibraryVersionId;
+        nextLibraryVersionId += 1;
+        MutMap.add(libraryVersions, Nat.compare, vid, {
+          versionId = vid; itemId = replaceId; versionNumber;
+          filename = session.filename; contentType = session.contentType;
+          sizeBytes = session.totalSizeBytes; blob = assembledBlob; sha256;
+          uploadedAt = now; uploadedBy = caller; uploadNotes = session.uploadNotes;
+        });
+        MutMap.add(libraryItems, Nat.compare, replaceId, { item with currentVersionId = vid });
+        appendVersionToLibraryItem(replaceId, vid);
+        (replaceId, vid)
+      };
+    };
+    // Shared counter — library uploads count against the same budget as L2b docs (Q8)
+    totalStorageUsedBytes += session.totalSizeBytes;
+    MutMap.remove(libraryUploadSessions, Nat.compare, sessionId);
+    auditOk(caller, "library.upload:" # Nat.toText(itemId), null);
+    #ok({ itemId; versionId; sha256 })
+  };
+
+  public shared ({ caller }) func abandonLibraryUpload(sessionId : Nat) : async Result.Result<(), Text> {
+    switch (Auth.requireAuthenticated(caller)) { case (#err(e)) { auditErr(caller, "library.upload.abandon", null, e); return #err(e) }; case (#ok) {} };
+    switch (requireRole(caller, #Associate)) { case (#err(e)) { auditErr(caller, "library.upload.abandon", null, e); return #err(e) }; case (#ok) {} };
+    let session = switch (MutMap.get(libraryUploadSessions, Nat.compare, sessionId)) {
+      case null { let e = "session " # Nat.toText(sessionId) # " not found"; auditErr(caller, "library.upload.abandon", null, e); return #err(e) };
+      case (?s) s;
+    };
+    if (session.startedBy != caller) {
+      let e = "not the session owner"; auditErr(caller, "library.upload.abandon", null, e); return #err(e);
+    };
+    MutMap.remove(libraryUploadSessions, Nat.compare, sessionId);
+    auditOk(caller, "library.upload.abandon", null);
+    #ok(())
+  };
+
+  // ── Firm Library — Item metadata updates ─────────────────────────────────
+  // Associate or higher; item must be #Active for all edits.
+
+  public shared ({ caller }) func renameLibraryItem(itemId : Nat, newName : Text) : async Result.Result<(), Text> {
+    let act = "library.rename:" # Nat.toText(itemId);
+    switch (Auth.requireAuthenticated(caller)) { case (#err(e)) { auditErr(caller, act, null, e); return #err(e) }; case (#ok) {} };
+    switch (requireRole(caller, #Associate)) { case (#err(e)) { auditErr(caller, act, null, e); return #err(e) }; case (#ok) {} };
+    let item = switch (lookupLibraryItemActive(itemId)) {
+      case (#err(e)) { auditErr(caller, act, null, e); return #err(e) };
+      case (#ok(i)) i;
+    };
+    if (newName.size() == 0 or newName.size() > Library.MAX_LIBRARY_NAME_LENGTH) {
+      let e = "name must be 1–" # Nat.toText(Library.MAX_LIBRARY_NAME_LENGTH) # " chars";
+      auditErr(caller, act, null, e); return #err(e);
+    };
+    MutMap.add(libraryItems, Nat.compare, itemId, { item with name = newName });
+    auditOk(caller, act, null);
+    #ok(())
+  };
+
+  public shared ({ caller }) func moveLibraryItem(itemId : Nat, newFolderId : ?Nat) : async Result.Result<(), Text> {
+    let act = "library.move:" # Nat.toText(itemId);
+    switch (Auth.requireAuthenticated(caller)) { case (#err(e)) { auditErr(caller, act, null, e); return #err(e) }; case (#ok) {} };
+    switch (requireRole(caller, #Associate)) { case (#err(e)) { auditErr(caller, act, null, e); return #err(e) }; case (#ok) {} };
+    let item = switch (lookupLibraryItemActive(itemId)) {
+      case (#err(e)) { auditErr(caller, act, null, e); return #err(e) };
+      case (#ok(i)) i;
+    };
+    switch (newFolderId) {
+      case null {};
+      case (?fid) switch (lookupFolder(fid)) {
+        case (#err(e)) { auditErr(caller, act, null, e); return #err(e) };
+        case (#ok(_)) {};
+      };
+    };
+    MutMap.add(libraryItems, Nat.compare, itemId, { item with folderId = newFolderId });
+    let toStr = switch (newFolderId) { case null "root"; case (?fid) Nat.toText(fid) };
+    auditOk(caller, act # ":to:" # toStr, null);
+    #ok(())
+  };
+
+  public shared ({ caller }) func updateLibraryItemDescription(itemId : Nat, newDescription : Text) : async Result.Result<(), Text> {
+    let act = "library.description:" # Nat.toText(itemId);
+    switch (Auth.requireAuthenticated(caller)) { case (#err(e)) { auditErr(caller, act, null, e); return #err(e) }; case (#ok) {} };
+    switch (requireRole(caller, #Associate)) { case (#err(e)) { auditErr(caller, act, null, e); return #err(e) }; case (#ok) {} };
+    let item = switch (lookupLibraryItemActive(itemId)) {
+      case (#err(e)) { auditErr(caller, act, null, e); return #err(e) };
+      case (#ok(i)) i;
+    };
+    if (newDescription.size() > Library.MAX_LIBRARY_DESCRIPTION_LENGTH) {
+      let e = "description too long";
+      auditErr(caller, act, null, e); return #err(e);
+    };
+    MutMap.add(libraryItems, Nat.compare, itemId, { item with description = newDescription });
+    auditOk(caller, act, null);
+    #ok(())
+  };
+
+  public shared ({ caller }) func addLibraryItemTag(itemId : Nat, tag : Text) : async Result.Result<(), Text> {
+    let act = "library.tag.add:" # Nat.toText(itemId);
+    switch (Auth.requireAuthenticated(caller)) { case (#err(e)) { auditErr(caller, act, null, e); return #err(e) }; case (#ok) {} };
+    switch (requireRole(caller, #Associate)) { case (#err(e)) { auditErr(caller, act, null, e); return #err(e) }; case (#ok) {} };
+    let item = switch (lookupLibraryItemActive(itemId)) {
+      case (#err(e)) { auditErr(caller, act, null, e); return #err(e) };
+      case (#ok(i)) i;
+    };
+    let nt = switch (Library.normalizeTag(tag)) {
+      case (#err(e)) { auditErr(caller, act, null, e); return #err(e) };
+      case (#ok(t)) t;
+    };
+    if (item.tags.size() >= Library.MAX_LIBRARY_TAGS) {
+      let e = "tag limit reached: max " # Nat.toText(Library.MAX_LIBRARY_TAGS);
+      auditErr(caller, act, null, e); return #err(e);
+    };
+    // Only add if not already present
+    var dup = false;
+    for (existing in item.tags.vals()) { if (existing == nt) dup := true };
+    let newTags = if (dup) item.tags else Array.concat<Text>(item.tags, [nt]);
+    MutMap.add(libraryItems, Nat.compare, itemId, { item with tags = newTags });
+    auditOk(caller, act, null);
+    #ok(())
+  };
+
+  public shared ({ caller }) func removeLibraryItemTag(itemId : Nat, tag : Text) : async Result.Result<(), Text> {
+    let act = "library.tag.remove:" # Nat.toText(itemId);
+    switch (Auth.requireAuthenticated(caller)) { case (#err(e)) { auditErr(caller, act, null, e); return #err(e) }; case (#ok) {} };
+    switch (requireRole(caller, #Associate)) { case (#err(e)) { auditErr(caller, act, null, e); return #err(e) }; case (#ok) {} };
+    let item = switch (lookupLibraryItemActive(itemId)) {
+      case (#err(e)) { auditErr(caller, act, null, e); return #err(e) };
+      case (#ok(i)) i;
+    };
+    let nt = switch (Library.normalizeTag(tag)) {
+      case (#err(e)) { auditErr(caller, act, null, e); return #err(e) };
+      case (#ok(t)) t;
+    };
+    let newTags = Array.filter<Text>(item.tags, func(t) { t != nt });
+    MutMap.add(libraryItems, Nat.compare, itemId, { item with tags = newTags });
+    auditOk(caller, act, null);
+    #ok(())
+  };
+
+  public shared ({ caller }) func setLibraryItemTags(itemId : Nat, tags : [Text]) : async Result.Result<(), Text> {
+    let act = "library.tag.set:" # Nat.toText(itemId);
+    switch (Auth.requireAuthenticated(caller)) { case (#err(e)) { auditErr(caller, act, null, e); return #err(e) }; case (#ok) {} };
+    switch (requireRole(caller, #Associate)) { case (#err(e)) { auditErr(caller, act, null, e); return #err(e) }; case (#ok) {} };
+    let item = switch (lookupLibraryItemActive(itemId)) {
+      case (#err(e)) { auditErr(caller, act, null, e); return #err(e) };
+      case (#ok(i)) i;
+    };
+    let newTags = switch (Library.validateTags(tags)) {
+      case (#err(e)) { auditErr(caller, act, null, e); return #err(e) };
+      case (#ok(t)) t;
+    };
+    MutMap.add(libraryItems, Nat.compare, itemId, { item with tags = newTags });
+    auditOk(caller, act, null);
+    #ok(())
+  };
+
+  // ── Firm Library — Item lifecycle ─────────────────────────────────────────
+  // Archive/unarchive: Associate or higher. Delete: Partner only.
+
+  public shared ({ caller }) func archiveLibraryItem(itemId : Nat) : async Result.Result<(), Text> {
+    let act = "library.archive:" # Nat.toText(itemId);
+    switch (Auth.requireAuthenticated(caller)) { case (#err(e)) { auditErr(caller, act, null, e); return #err(e) }; case (#ok) {} };
+    switch (requireRole(caller, #Associate)) { case (#err(e)) { auditErr(caller, act, null, e); return #err(e) }; case (#ok) {} };
+    let item = switch (lookupLibraryItemActive(itemId)) {
+      case (#err(e)) { auditErr(caller, act, null, e); return #err(e) };
+      case (#ok(i)) i;
+    };
+    MutMap.add(libraryItems, Nat.compare, itemId, { item with status = #Archived });
+    auditOk(caller, act, null);
+    #ok(())
+  };
+
+  public shared ({ caller }) func unarchiveLibraryItem(itemId : Nat) : async Result.Result<(), Text> {
+    let act = "library.unarchive:" # Nat.toText(itemId);
+    switch (Auth.requireAuthenticated(caller)) { case (#err(e)) { auditErr(caller, act, null, e); return #err(e) }; case (#ok) {} };
+    switch (requireRole(caller, #Associate)) { case (#err(e)) { auditErr(caller, act, null, e); return #err(e) }; case (#ok) {} };
+    switch (MutMap.get(libraryItems, Nat.compare, itemId)) {
+      case null {
+        let e = "library item " # Nat.toText(itemId) # " not found";
+        auditErr(caller, act, null, e); return #err(e);
+      };
+      case (?item) {
+        if (item.status != #Archived) {
+          let e = "library item " # Nat.toText(itemId) # " is not archived";
+          auditErr(caller, act, null, e); return #err(e);
+        };
+        MutMap.add(libraryItems, Nat.compare, itemId, { item with status = #Active });
+      };
+    };
+    auditOk(caller, act, null);
+    #ok(())
+  };
+
+  // Partner only; soft-delete only (bytes remain, no storage reclamation). SEC-INV-4.
+  public shared ({ caller }) func deleteLibraryItem(itemId : Nat) : async Result.Result<(), Text> {
+    let act = "library.delete:" # Nat.toText(itemId);
+    switch (Auth.requireAuthenticated(caller)) { case (#err(e)) { auditErr(caller, act, null, e); return #err(e) }; case (#ok) {} };
+    switch (requireRole(caller, #Partner)) { case (#err(e)) { auditErr(caller, act, null, e); return #err(e) }; case (#ok) {} };
+    switch (MutMap.get(libraryItems, Nat.compare, itemId)) {
+      case null {
+        let e = "library item " # Nat.toText(itemId) # " not found";
+        auditErr(caller, act, null, e); return #err(e);
+      };
+      case (?item) {
+        if (item.status == #Deleted) {
+          let e = "library item " # Nat.toText(itemId) # " is already deleted";
+          auditErr(caller, act, null, e); return #err(e);
+        };
+        MutMap.add(libraryItems, Nat.compare, itemId, { item with status = #Deleted });
+      };
+    };
+    auditOk(caller, act, null);
+    #ok(())
+  };
+
+  // ── Firm Library — Download flow ──────────────────────────────────────────
+  // UPDATE (not query) — must emit audit entry. Chunk bytes via getLibraryChunk query.
+  // SEC-INV-15: #Active and #Archived allowed; #Deleted rejected.
+
+  public shared ({ caller }) func prepareLibraryDownload(
+    versionId : Nat
+  ) : async Result.Result<{ itemId : Nat; versionId : Nat; chunkCount : Nat; contentType : Text; sizeBytes : Nat; filename : Text; sha256 : Blob }, Text> {
+    switch (Auth.requireAuthenticated(caller)) { case (#err(e)) { auditErr(caller, "library.download:0:0", null, e); return #err(e) }; case (#ok) {} };
+    switch (requireRole(caller, #Staff)) { case (#err(e)) { auditErr(caller, "library.download:0:0", null, e); return #err(e) }; case (#ok) {} };
+    let version = switch (lookupLibraryVersion(versionId)) {
+      case (#err(e)) { auditErr(caller, "library.download:0:0", null, e); return #err(e) };
+      case (#ok(v)) v;
+    };
+    let item = switch (lookupLibraryItemReadable(version.itemId)) {
+      case (#err(e)) { auditErr(caller, "library.download:0:" # Nat.toText(versionId), null, e); return #err(e) };
+      case (#ok(i)) i;
+    };
+    let actStr = "library.download:" # Nat.toText(item.id) # ":" # Nat.toText(versionId);
+    auditOk(caller, actStr, null);
+    #ok({
+      itemId = item.id; versionId;
+      chunkCount = DocumentModule.expectedChunkCount(version.sizeBytes);
+      contentType = version.contentType; sizeBytes = version.sizeBytes;
+      filename = version.filename; sha256 = version.sha256;
+    })
+  };
+
   // ── L4 Update — export ───────────────────────────────────────────────────
   // SEC-INV-3 (L4): Partner role required. Operations principal has no user role
   //                 per L1, so requireRole fails — cannot export.
@@ -1660,6 +2393,22 @@ shared(installer) persistent actor class ThePractice(
     let userPrincipals = Iter.toArray(
       Iter.map(Map.entries(users), func((p, _) : (Principal, UserRecord)) : Principal { p })
     );
+    // Firm Library fields (Phase 1.5)
+    let allFolders = Iter.toArray(
+      Iter.map(MutMap.entries(folders), func((_, f) : (Nat, Folder)) : Folder { f })
+    );
+    let libraryEntries = Iter.toArray(
+      Iter.map(MutMap.entries(libraryItems), func((id, _) : (Nat, LibraryItem)) : { itemId : Nat; versionIds : [Nat] } {
+        let vids = switch (MutMap.get(libraryVersionsByItem, Nat.compare, id)) {
+          case null   [];
+          case (?arr) arr;
+        };
+        { itemId = id; versionIds = vids }
+      })
+    );
+    let totalLibraryVersions : Nat = Array.foldLeft<{ itemId : Nat; versionIds : [Nat] }, Nat>(
+      libraryEntries, 0, func(acc, e) { acc + e.versionIds.size() }
+    );
     let manifest : ExportManifest = {
       generatedAt           = Time.now();
       generatedBy           = caller;
@@ -1667,6 +2416,9 @@ shared(installer) persistent actor class ThePractice(
       totalMatters          = MutMap.size(matters);
       totalDocuments        = MutMap.size(documents);
       totalVersions         = MutMap.size(documentVersions);
+      totalFolders          = MutMap.size(folders);
+      totalLibraryItems     = MutMap.size(libraryItems);
+      totalLibraryVersions;
       totalAuditEntries     = nextAuditId - 1;  // nextAuditId is 1-indexed; -1 gives count
       storageUsedBytes      = totalStorageUsedBytes;
       storageBudgetBytes    = storageBudgetBytes;
@@ -1675,10 +2427,176 @@ shared(installer) persistent actor class ThePractice(
       clientIds;
       matterIds;
       documents             = docEntries;
+      folders               = allFolders;
+      libraryItems          = libraryEntries;
       userPrincipals;
     };
     auditOk(caller, "createExportManifest", null);
     #ok(manifest)
+  };
+
+  // ── Firm Library private helpers ─────────────────────────────────────────
+  // All are stateful (close over actor Maps); stateless helpers live in Library.mo.
+
+  // Lookup folder by ID; #err if not found.
+  func lookupFolder(id : Nat) : Result.Result<Folder, Text> {
+    switch (MutMap.get(folders, Nat.compare, id)) {
+      case null #err("folder " # Nat.toText(id) # " not found");
+      case (?f) #ok(f);
+    };
+  };
+
+  // Walk parent chain upward: depth 1 = root-level folder (parentId = null).
+  func computeFolderDepth(folderId : Nat) : Nat {
+    switch (MutMap.get(folders, Nat.compare, folderId)) {
+      case null 0;
+      case (?f) switch (f.parentId) {
+        case null 1;
+        case (?pid) 1 + computeFolderDepth(pid);
+      };
+    };
+  };
+
+  // True if candidateId is folderId or any descendant (used for cycle detection). SEC-INV-12.
+  func subtreeContains(rootId : Nat, candidateId : Nat) : Bool {
+    if (rootId == candidateId) return true;
+    for ((_, f) in MutMap.entries(folders)) {
+      switch (f.parentId) {
+        case (?pid) {
+          if (pid == rootId and subtreeContains(f.id, candidateId)) return true;
+        };
+        case null {};
+      };
+    };
+    false
+  };
+
+  // Max depth of descendants below folderId (0 = leaf). Used for depth-on-move check.
+  func subtreeDepth(folderId : Nat) : Nat {
+    var maxChildDepth : Nat = 0;
+    for ((_, f) in MutMap.entries(folders)) {
+      switch (f.parentId) {
+        case (?pid) {
+          if (pid == folderId) {
+            let d = 1 + subtreeDepth(f.id);
+            if (d > maxChildDepth) maxChildDepth := d;
+          };
+        };
+        case null {};
+      };
+    };
+    maxChildDepth
+  };
+
+  // SEC-INV-13: reject folder delete if any child folder or any item (any status) references it.
+  func folderHasDependents(folderId : Nat) : ?Text {
+    var childFolders : Nat = 0;
+    var childItems : Nat = 0;
+    for ((_, f) in MutMap.entries(folders)) {
+      switch (f.parentId) {
+        case (?pid) if (pid == folderId) childFolders += 1;
+        case null {};
+      };
+    };
+    for ((_, item) in MutMap.entries(libraryItems)) {
+      switch (item.folderId) {
+        case (?fid) if (fid == folderId) childItems += 1;
+        case null {};
+      };
+    };
+    if (childFolders == 0 and childItems == 0) null
+    else {
+      let msg = if (childFolders > 0 and childItems > 0) {
+        Nat.toText(childFolders) # " child folder(s), " # Nat.toText(childItems) # " item(s)"
+      } else if (childFolders > 0) {
+        Nat.toText(childFolders) # " child folder(s)"
+      } else {
+        Nat.toText(childItems) # " item(s)"
+      };
+      ?msg
+    }
+  };
+
+  // Item exists AND status #Active.
+  func lookupLibraryItemActive(id : Nat) : Result.Result<LibraryItem, Text> {
+    switch (MutMap.get(libraryItems, Nat.compare, id)) {
+      case null #err("library item " # Nat.toText(id) # " not found");
+      case (?item) {
+        if (item.status != #Active) #err("library item " # Nat.toText(id) # " is not active")
+        else #ok(item)
+      };
+    };
+  };
+
+  // Item exists AND status #Active or #Archived (allows download of archived items). SEC-INV-15.
+  func lookupLibraryItemReadable(id : Nat) : Result.Result<LibraryItem, Text> {
+    switch (MutMap.get(libraryItems, Nat.compare, id)) {
+      case null #err("library item " # Nat.toText(id) # " not found");
+      case (?item) {
+        if (item.status == #Deleted) #err("library item " # Nat.toText(id) # " is deleted")
+        else #ok(item)
+      };
+    };
+  };
+
+  // Library version exists.
+  func lookupLibraryVersion(id : Nat) : Result.Result<LibraryVersion, Text> {
+    switch (MutMap.get(libraryVersions, Nat.compare, id)) {
+      case null #err("library version " # Nat.toText(id) # " not found");
+      case (?v) #ok(v);
+    };
+  };
+
+  // SEC-INV-6: shared budget check with L2b (Q8).
+  func validateLibraryBudgetAvailable(sizeBytes : Nat) : Result.Result<(), Text> {
+    if (totalStorageUsedBytes + sizeBytes > storageBudgetBytes) {
+      let available = if (storageBudgetBytes >= totalStorageUsedBytes) storageBudgetBytes - totalStorageUsedBytes else 0;
+      #err("storage budget exceeded: need " # Nat.toText(sizeBytes) # " bytes, only " # Nat.toText(available) # " available")
+    } else #ok(())
+  };
+
+  // Resolve FolderScope membership for an item. Subtree walk uses actor state. SEC-INV-22.
+  func evaluateFolderScope(item : LibraryItem, scope : FolderScope) : Bool {
+    switch scope {
+      case (#Any) true;
+      case (#Root) item.folderId == null;
+      case (#Folder fid) item.folderId == ?fid;
+      case (#Subtree rid) {
+        switch (item.folderId) {
+          case null false;
+          case (?fid) subtreeContains(rid, fid);
+        };
+      };
+    };
+  };
+
+  // Append versionId to libraryVersionsByItem[itemId]; initialise list if absent.
+  func appendVersionToLibraryItem(itemId : Nat, versionId : Nat) : () {
+    let existing : [Nat] = switch (MutMap.get(libraryVersionsByItem, Nat.compare, itemId)) {
+      case null [];
+      case (?arr) arr;
+    };
+    MutMap.add(libraryVersionsByItem, Nat.compare, itemId, Array.concat<Nat>(existing, [versionId]));
+  };
+
+  // Internal search: shared by searchLibrary and listLibraryItems. SEC-INV-19: limit ≤ 1000.
+  func doSearchLibrary(filter : LibraryFilter, after : Nat, limit : Nat) : [LibraryItemSearchResult] {
+    let cap = if (limit > 1000) 1000 else limit;
+    let base = MutMap.entriesFrom(libraryItems, Nat.compare, after + 1);
+    let matched = Iter.filterMap<(Nat, LibraryItem), LibraryItemSearchResult>(base,
+      func((_, item) : (Nat, LibraryItem)) : ?LibraryItemSearchResult {
+        let isInScope = evaluateFolderScope(item, filter.folderScope);
+        switch (MutMap.get(libraryVersions, Nat.compare, item.currentVersionId)) {
+          case null null;
+          case (?v) {
+            if (Library.matchesLibraryFilter(item, v, filter, isInScope))
+              ?{ item; currentVersion = Library.stripBlobFromLibraryVersion(v) }
+            else null
+          };
+        };
+      }
+    );
+    Iter.toArray(Iter.take(matched, cap))
   };
 
   // ── L5 Audit read ─────────────────────────────────────────────────────────
