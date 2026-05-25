@@ -84,6 +84,8 @@ export interface AuthContextValue {
   principal: string | null;
   role: Role | null;
   actor: Backend | null;
+  identity: DelegationIdentity | null;
+  isMasterController: boolean;
   login: () => Promise<void>;
   logout: () => Promise<void>;
   isLoading: boolean;
@@ -97,26 +99,35 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [principal, setPrincipal] = useState<string | null>(null);
   const [role, setRole] = useState<Role | null>(null);
   const [actor, setActor] = useState<Backend | null>(null);
+  const [identity, setIdentity] = useState<DelegationIdentity | null>(null);
+  const [isMasterController, setIsMasterController] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
   const [noAccess, setNoAccess] = useState(false);
 
-  async function applyIdentity(identity: DelegationIdentity) {
-    const backend = await getActor(identity);
-    const principalText = identity.getPrincipal().toText();
+  async function applyIdentity(ident: DelegationIdentity) {
+    const backend = await getActor(ident);
+    const principalText = ident.getPrincipal().toText();
     const roleResult = await backend.getMyRole();
 
     if (roleResult === null) {
       setNoAccess(true);
       setIsAuthenticated(true);
       setPrincipal(principalText);
+      setIdentity(ident);
       setActor(null);
       setRole(null);
+      setIsMasterController(false);
       return;
     }
+
+    const masterPrincipal = await backend.getMasterController();
+    const isMaster = principalText === masterPrincipal.toText();
 
     setActor(backend);
     setPrincipal(principalText);
     setRole(roleResult);
+    setIdentity(ident);
+    setIsMasterController(isMaster);
     setIsAuthenticated(true);
     setNoAccess(false);
   }
@@ -127,8 +138,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       return;
     }
     restoreSession()
-      .then((identity) => {
-        if (identity) return applyIdentity(identity);
+      .then((ident) => {
+        if (ident) return applyIdentity(ident);
       })
       .catch((e: unknown) => console.error("Session restore failed:", e))
       .finally(() => setIsLoading(false));
@@ -160,11 +171,13 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     setPrincipal(null);
     setRole(null);
     setActor(null);
+    setIdentity(null);
+    setIsMasterController(false);
     setNoAccess(false);
   }
 
   return (
-    <AuthContext.Provider value={{ isAuthenticated, principal, role, actor, login, logout, isLoading, noAccess }}>
+    <AuthContext.Provider value={{ isAuthenticated, principal, role, actor, identity, isMasterController, login, logout, isLoading, noAccess }}>
       {children}
     </AuthContext.Provider>
   );

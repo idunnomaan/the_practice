@@ -1629,6 +1629,127 @@ check "audit has library.delete entry" "library.delete" "$AUDIT"
 check "audit has library.download entry" "library.download" "$AUDIT"
 echo ""
 
+# ── Admin Settings + Cycle Management (steps 383+) ───────────────────────────
+# Running as smoke-master (master controller) unless noted.
+# Step 12 revoked operationsPrincipal; re-grant it for Admin tests.
+R=$(icp canister call backend grantOperations "(principal \"$OPS_PRINCIPAL\")")
+check "grantOperations (Admin tests setup)" "ok" "$R"
+
+echo "Step 127: getCycleBalance — public query, returns a positive Nat"
+CB=$(icp canister call backend getCycleBalance "()")
+check "getCycleBalance returns a nat (smoke response has digit)" "[0-9]" "$CB"
+echo ""
+
+echo "Step 128: createTopUpRequest — master creates request, gets id=1"
+R=$(icp canister call backend createTopUpRequest "(5 : nat, \"Monthly refuel — 5T needed\")")
+check "createTopUpRequest returns ok" "ok" "$R"
+TOPUP_ID1=$(echo "$R" | python3 -c "import sys,re; m=re.search(r'ok\s*=\s*(\d+)',sys.stdin.read()); print(m.group(1) if m else '?')")
+check "createTopUpRequest id is 1" "1" "$TOPUP_ID1"
+echo ""
+
+echo "Step 129: getTopUpRequest(1) — correct fields"
+R=$(icp canister call backend getTopUpRequest "(1 : nat)")
+check "getTopUpRequest returns Some" "opt record" "$R"
+check "getTopUpRequest id = 1" "id = 1" "$R"
+check "getTopUpRequest status = Pending" "Pending" "$R"
+check "getTopUpRequest requestedTrillionCycles = 5" "requestedTrillionCycles = 5" "$R"
+echo ""
+
+echo "Step 130: listTopUpRequests — full and filtered"
+R=$(icp canister call backend listTopUpRequests "(null)")
+check "listTopUpRequests(null) returns the request" "Pending" "$R"
+R=$(icp canister call backend listTopUpRequests "(opt variant { Pending })")
+check "listTopUpRequests(?#Pending) includes request 1" "Pending" "$R"
+R=$(icp canister call backend listTopUpRequests "(opt variant { Fulfilled })")
+check_absent "listTopUpRequests(?#Fulfilled) excludes request 1" "requestedTrillionCycles = 5" "$R"
+echo ""
+
+echo "Step 131: createTopUpRequest — validation failures"
+R=$(icp canister call backend createTopUpRequest "(5 : nat, \"Attempt\")" --identity smoke-ops)
+check "non-master-controller cannot create top-up request" "err" "$R"
+R=$(icp canister call backend createTopUpRequest "(0 : nat, \"Zero amount\")")
+check "amount=0 rejected" "err" "$R"
+R=$(icp canister call backend createTopUpRequest "(101 : nat, \"Over 100\")")
+check "amount=101 rejected" "err" "$R"
+LONG_NOTE=$(python3 -c "print('x' * 1025)")
+R=$(icp canister call backend createTopUpRequest "(5 : nat, \"$LONG_NOTE\")")
+check "note > 1024 chars rejected" "err" "$R"
+echo ""
+
+echo "Step 132: cancelTopUpRequest(1) by master"
+R=$(icp canister call backend cancelTopUpRequest "(1 : nat)")
+check "cancelTopUpRequest returns ok" "ok" "$R"
+R=$(icp canister call backend getTopUpRequest "(1 : nat)")
+check "request 1 status is now Cancelled" "Cancelled" "$R"
+check "cancelledBy is set" "cancelledBy" "$R"
+check "cancelledAt is set" "cancelledAt" "$R"
+echo ""
+
+echo "Step 133: cannot cancel an already-cancelled request"
+R=$(icp canister call backend cancelTopUpRequest "(1 : nat)")
+check "re-cancel returns err" "err" "$R"
+check "error text: not pending" "not pending" "$R"
+echo ""
+
+echo "Step 134: cannot fulfill an already-cancelled request"
+R=$(icp canister call backend fulfillTopUpRequest "(1 : nat)" --identity smoke-ops)
+check "fulfill cancelled request returns err" "err" "$R"
+check "error text: not pending" "not pending" "$R"
+echo ""
+
+echo "Step 135: createTopUpRequest → fulfillTopUpRequest by ops"
+R=$(icp canister call backend createTopUpRequest "(10 : nat, \"Q3 top-up\")")
+check "createTopUpRequest returns ok" "ok" "$R"
+TOPUP_ID2=$(echo "$R" | python3 -c "import sys,re; m=re.search(r'ok\s*=\s*(\d+)',sys.stdin.read()); print(m.group(1) if m else '?')")
+check "createTopUpRequest id is 2" "2" "$TOPUP_ID2"
+R=$(icp canister call backend fulfillTopUpRequest "($TOPUP_ID2 : nat)" --identity smoke-ops)
+check "ops principal fulfills request" "ok" "$R"
+R=$(icp canister call backend getTopUpRequest "($TOPUP_ID2 : nat)")
+check "request 2 status is Fulfilled" "Fulfilled" "$R"
+check "fulfilledBy is set" "fulfilledBy" "$R"
+check "fulfilledAt is set" "fulfilledAt" "$R"
+echo ""
+
+echo "Step 136: master cannot fulfill"
+R=$(icp canister call backend fulfillTopUpRequest "($TOPUP_ID2 : nat)")
+check "master fulfillTopUpRequest returns err" "err" "$R"
+check "error: only operations principal can fulfill" "only operations principal" "$R"
+echo ""
+
+echo "Step 137: ops cannot cancel"
+R=$(icp canister call backend cancelTopUpRequest "($TOPUP_ID2 : nat)" --identity smoke-ops)
+check "ops cancelTopUpRequest returns err" "err" "$R"
+echo ""
+
+echo "Step 138: nextTopUpRequestId = 3 after two creates — verify by creating id 3"
+R=$(icp canister call backend createTopUpRequest "(1 : nat, \"Verify counter\")")
+check "createTopUpRequest returns ok" "ok" "$R"
+TOPUP_ID3=$(echo "$R" | python3 -c "import sys,re; m=re.search(r'ok\s*=\s*(\d+)',sys.stdin.read()); print(m.group(1) if m else '?')")
+check "third request id is 3 (counter=3 before this call, now 4)" "3" "$TOPUP_ID3"
+echo ""
+
+echo "Step 139: audit trail — top-up entries present"
+AUDIT=$(icp canister call backend readAuditEntries "(0 : nat, 1000 : nat)")
+check "audit has topUpRequest.create entries" "topUpRequest.create" "$AUDIT"
+check "audit has topUpRequest.cancel entry" "topUpRequest.cancel" "$AUDIT"
+check "audit has topUpRequest.fulfill entry" "topUpRequest.fulfill" "$AUDIT"
+check "audit has reject entry from non-master create attempt" "err" "$AUDIT"
+echo ""
+
+echo "Step 140: upgrade survival — topUpRequests and counter persist"
+icp deploy backend --mode upgrade --args "(principal \"$MASTER_PRINCIPAL\")" 2>&1 | tail -2
+R=$(icp canister call backend getTopUpRequest "(1 : nat)")
+check "post-upgrade: request 1 still exists (Cancelled)" "Cancelled" "$R"
+R=$(icp canister call backend getTopUpRequest "(2 : nat)")
+check "post-upgrade: request 2 still exists (Fulfilled)" "Fulfilled" "$R"
+R=$(icp canister call backend createTopUpRequest "(2 : nat, \"Post-upgrade create\")")
+check "post-upgrade: createTopUpRequest succeeds" "ok" "$R"
+TOPUP_POST=$(echo "$R" | python3 -c "import sys,re; m=re.search(r'ok\s*=\s*(\d+)',sys.stdin.read()); print(m.group(1) if m else '?')")
+check "post-upgrade: counter continues (id=4, not reset)" "4" "$TOPUP_POST"
+R=$(icp canister call backend listTopUpRequests "(opt variant { Pending })")
+check "post-upgrade: listTopUpRequests shows 2 pending (id 3 + 4)" "Pending" "$R"
+echo ""
+
 # ── Summary ──────────────────────────────────────────────────────────────────
 echo "=== Results: $PASS passed, $FAIL failed ==="
 if [ "$FAIL" -gt 0 ]; then

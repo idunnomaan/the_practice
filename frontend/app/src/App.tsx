@@ -13,6 +13,8 @@ import MatterDetailPage from "./pages/MatterDetailPage";
 import DocumentsPage from "./pages/DocumentsPage";
 import UsersPage from "./pages/UsersPage";
 import AuditPage from "./pages/AuditPage";
+import LibraryPage from "./pages/LibraryPage";
+import AdminSettingsPage from "./pages/AdminSettingsPage";
 
 export default function App() {
   return (
@@ -29,8 +31,10 @@ export default function App() {
               <Route path="/matters" element={<MattersPage />} />
               <Route path="/matters/:id" element={<MatterDetailPage />} />
               <Route path="/matters/:id/documents" element={<DocumentsPage />} />
+              <Route path="/library" element={<LibraryPage />} />
               <Route path="/users" element={<PartnerOnly><UsersPage /></PartnerOnly>} />
               <Route path="/audit" element={<PartnerOnly><AuditPage /></PartnerOnly>} />
+              <Route path="/admin" element={<AdminSettingsPage />} />
             </Route>
           </Route>
         </Routes>

@@ -26,16 +26,30 @@ export const idlFactory = ({ IDL }) => {
   });
   const Result_1 = IDL.Variant({ 'ok' : IDL.Nat, 'err' : IDL.Text });
   const Time = IDL.Int;
+  const Folder = IDL.Record({
+    'id' : IDL.Nat,
+    'name' : IDL.Text,
+    'createdAt' : Time,
+    'createdBy' : IDL.Principal,
+    'parentId' : IDL.Opt(IDL.Nat),
+  });
   const ExportManifest = IDL.Record({
+    'libraryItems' : IDL.Vec(
+      IDL.Record({ 'itemId' : IDL.Nat, 'versionIds' : IDL.Vec(IDL.Nat) })
+    ),
     'totalVersions' : IDL.Nat,
+    'totalFolders' : IDL.Nat,
     'documents' : IDL.Vec(
       IDL.Record({ 'versionIds' : IDL.Vec(IDL.Nat), 'documentId' : IDL.Nat })
     ),
     'matterIds' : IDL.Vec(IDL.Nat),
+    'totalLibraryItems' : IDL.Nat,
     'totalMatters' : IDL.Nat,
     'generatedAt' : Time,
     'generatedBy' : IDL.Principal,
     'userPrincipals' : IDL.Vec(IDL.Principal),
+    'folders' : IDL.Vec(Folder),
+    'totalLibraryVersions' : IDL.Nat,
     'storageUsedBytes' : IDL.Nat,
     'masterController' : IDL.Principal,
     'totalClients' : IDL.Nat,
@@ -45,12 +59,20 @@ export const idlFactory = ({ IDL }) => {
     'operationsPrincipal' : IDL.Opt(IDL.Principal),
     'totalDocuments' : IDL.Nat,
   });
-  const Result_5 = IDL.Variant({ 'ok' : ExportManifest, 'err' : IDL.Text });
+  const Result_7 = IDL.Variant({ 'ok' : ExportManifest, 'err' : IDL.Text });
   const DocumentStatusCounts = IDL.Record({
     'deleted' : IDL.Nat,
     'active' : IDL.Nat,
   });
-  const Result_4 = IDL.Variant({
+  const Result_6 = IDL.Variant({
+    'ok' : IDL.Record({
+      'itemId' : IDL.Nat,
+      'versionId' : IDL.Nat,
+      'sha256' : IDL.Vec(IDL.Nat8),
+    }),
+    'err' : IDL.Text,
+  });
+  const Result_5 = IDL.Variant({
     'ok' : IDL.Record({
       'versionId' : IDL.Nat,
       'sha256' : IDL.Vec(IDL.Nat8),
@@ -101,6 +123,35 @@ export const idlFactory = ({ IDL }) => {
     'uploadedAt' : Time,
     'uploadedBy' : IDL.Principal,
   });
+  const LibraryItemStatus = IDL.Variant({
+    'Active' : IDL.Null,
+    'Archived' : IDL.Null,
+    'Deleted' : IDL.Null,
+  });
+  const LibraryItem = IDL.Record({
+    'id' : IDL.Nat,
+    'status' : LibraryItemStatus,
+    'name' : IDL.Text,
+    'createdAt' : Time,
+    'createdBy' : IDL.Principal,
+    'tags' : IDL.Vec(IDL.Text),
+    'description' : IDL.Text,
+    'folderId' : IDL.Opt(IDL.Nat),
+    'currentVersionId' : IDL.Nat,
+  });
+  const LibraryVersion = IDL.Record({
+    'itemId' : IDL.Nat,
+    'versionId' : IDL.Nat,
+    'sha256' : IDL.Vec(IDL.Nat8),
+    'contentType' : IDL.Text,
+    'blob' : IDL.Vec(IDL.Nat8),
+    'filename' : IDL.Text,
+    'sizeBytes' : IDL.Nat,
+    'uploadNotes' : IDL.Text,
+    'versionNumber' : IDL.Nat,
+    'uploadedAt' : Time,
+    'uploadedBy' : IDL.Principal,
+  });
   const MatterStatus = IDL.Variant({
     'OnHold' : IDL.Null,
     'Open' : IDL.Null,
@@ -122,6 +173,48 @@ export const idlFactory = ({ IDL }) => {
     'assignedPartner' : IDL.Opt(IDL.Principal),
     'openedAt' : Time,
   });
+  const TopUpRequestStatus = IDL.Variant({
+    'Cancelled' : IDL.Null,
+    'Fulfilled' : IDL.Null,
+    'Pending' : IDL.Null,
+  });
+  const TopUpRequestRecord = IDL.Record({
+    'id' : IDL.Nat,
+    'status' : TopUpRequestStatus,
+    'note' : IDL.Text,
+    'createdAt' : Time,
+    'createdBy' : IDL.Principal,
+    'requestedTrillionCycles' : IDL.Nat,
+    'cancelledAt' : IDL.Opt(Time),
+    'cancelledBy' : IDL.Opt(IDL.Principal),
+    'fulfilledAt' : IDL.Opt(Time),
+    'fulfilledBy' : IDL.Opt(IDL.Principal),
+  });
+  const FolderScope = IDL.Variant({
+    'Any' : IDL.Null,
+    'Folder' : IDL.Nat,
+    'Root' : IDL.Null,
+    'Subtree' : IDL.Nat,
+  });
+  const LibraryItemSearchResult = IDL.Record({
+    'item' : LibraryItem,
+    'currentVersion' : LibraryVersion,
+  });
+  const FolderListing = IDL.Record({
+    'folders' : IDL.Vec(Folder),
+    'items' : IDL.Vec(LibraryItemSearchResult),
+  });
+  const LibraryFilter = IDL.Record({
+    'folderScope' : FolderScope,
+    'currentFilenameContains' : IDL.Opt(IDL.Text),
+    'contentType' : IDL.Opt(IDL.Text),
+    'nameContains' : IDL.Opt(IDL.Text),
+    'uploadedAfter' : IDL.Opt(Time),
+    'tagsContainsAny' : IDL.Opt(IDL.Vec(IDL.Text)),
+    'statusFilter' : IDL.Opt(LibraryItemStatus),
+    'uploadedBy' : IDL.Opt(IDL.Principal),
+    'uploadedBefore' : IDL.Opt(Time),
+  });
   const UserRecord = IDL.Record({
     'role' : Role,
     'addedAt' : Time,
@@ -134,13 +227,25 @@ export const idlFactory = ({ IDL }) => {
     'onHold' : IDL.Nat,
     'archived' : IDL.Nat,
   });
-  const Result_3 = IDL.Variant({
+  const Result_4 = IDL.Variant({
     'ok' : IDL.Record({
       'sha256' : IDL.Vec(IDL.Nat8),
       'contentType' : IDL.Text,
       'filename' : IDL.Text,
       'chunkCount' : IDL.Nat,
       'documentId' : IDL.Nat,
+      'sizeBytes' : IDL.Nat,
+    }),
+    'err' : IDL.Text,
+  });
+  const Result_3 = IDL.Variant({
+    'ok' : IDL.Record({
+      'itemId' : IDL.Nat,
+      'versionId' : IDL.Nat,
+      'sha256' : IDL.Vec(IDL.Nat8),
+      'contentType' : IDL.Text,
+      'filename' : IDL.Text,
+      'chunkCount' : IDL.Nat,
       'sizeBytes' : IDL.Nat,
     }),
     'err' : IDL.Text,
@@ -191,19 +296,28 @@ export const idlFactory = ({ IDL }) => {
     'assignedPartner' : IDL.Opt(IDL.Principal),
   });
   const ThePractice = IDL.Service({
+    'abandonLibraryUpload' : IDL.Func([IDL.Nat], [Result], []),
     'abandonUpload' : IDL.Func([IDL.Nat], [Result], []),
+    'addLibraryItemTag' : IDL.Func([IDL.Nat, IDL.Text], [Result], []),
     'addUser' : IDL.Func([IDL.Principal, Role], [Result], []),
     'appendChunk' : IDL.Func(
         [IDL.Nat, IDL.Nat, IDL.Vec(IDL.Nat8)],
         [Result],
         [],
       ),
+    'appendLibraryChunk' : IDL.Func(
+        [IDL.Nat, IDL.Nat, IDL.Vec(IDL.Nat8)],
+        [Result],
+        [],
+      ),
+    'archiveLibraryItem' : IDL.Func([IDL.Nat], [Result], []),
     'archiveMatter' : IDL.Func([IDL.Nat], [Result], []),
     'assignPartnerToMatter' : IDL.Func(
         [IDL.Nat, IDL.Opt(IDL.Principal)],
         [Result],
         [],
       ),
+    'cancelTopUpRequest' : IDL.Func([IDL.Nat], [Result], []),
     'clientsByStatus' : IDL.Func([], [ClientStatusCounts], ['query']),
     'closeMatter' : IDL.Func([IDL.Nat], [Result], []),
     'createClient' : IDL.Func(
@@ -218,16 +332,22 @@ export const idlFactory = ({ IDL }) => {
         [Result_1],
         [],
       ),
-    'createExportManifest' : IDL.Func([], [Result_5], []),
+    'createExportManifest' : IDL.Func([], [Result_7], []),
+    'createFolder' : IDL.Func([IDL.Text, IDL.Opt(IDL.Nat)], [Result_1], []),
     'createMatter' : IDL.Func(
         [IDL.Text, IDL.Text, IDL.Nat, IDL.Opt(IDL.Principal), IDL.Text],
         [Result_1],
         [],
       ),
+    'createTopUpRequest' : IDL.Func([IDL.Nat, IDL.Text], [Result_1], []),
     'deactivateClient' : IDL.Func([IDL.Nat], [Result], []),
     'deleteDocument' : IDL.Func([IDL.Nat], [Result], []),
+    'deleteFolder' : IDL.Func([IDL.Nat], [Result], []),
+    'deleteLibraryItem' : IDL.Func([IDL.Nat], [Result], []),
     'documentsByStatus' : IDL.Func([], [DocumentStatusCounts], ['query']),
-    'finalizeUpload' : IDL.Func([IDL.Nat], [Result_4], []),
+    'finalizeLibraryUpload' : IDL.Func([IDL.Nat], [Result_6], []),
+    'finalizeUpload' : IDL.Func([IDL.Nat], [Result_5], []),
+    'fulfillTopUpRequest' : IDL.Func([IDL.Nat], [Result], []),
     'getChunk' : IDL.Func(
         [IDL.Nat, IDL.Nat],
         [IDL.Opt(IDL.Vec(IDL.Nat8))],
@@ -235,11 +355,27 @@ export const idlFactory = ({ IDL }) => {
       ),
     'getClient' : IDL.Func([IDL.Nat], [IDL.Opt(Client)], ['query']),
     'getClientCount' : IDL.Func([], [IDL.Nat], ['query']),
+    'getCycleBalance' : IDL.Func([], [IDL.Nat], ['query']),
     'getDocument' : IDL.Func([IDL.Nat], [IDL.Opt(Document)], ['query']),
     'getDocumentCount' : IDL.Func([], [IDL.Nat], ['query']),
     'getDocumentVersion' : IDL.Func(
         [IDL.Nat],
         [IDL.Opt(DocumentVersion)],
+        ['query'],
+      ),
+    'getFolder' : IDL.Func([IDL.Nat], [IDL.Opt(Folder)], ['query']),
+    'getFolderCount' : IDL.Func([], [IDL.Nat], ['query']),
+    'getFolderDepth' : IDL.Func([IDL.Nat], [IDL.Opt(IDL.Nat)], ['query']),
+    'getLibraryChunk' : IDL.Func(
+        [IDL.Nat, IDL.Nat],
+        [IDL.Opt(IDL.Vec(IDL.Nat8))],
+        ['query'],
+      ),
+    'getLibraryItem' : IDL.Func([IDL.Nat], [IDL.Opt(LibraryItem)], ['query']),
+    'getLibraryItemCount' : IDL.Func([], [IDL.Nat], ['query']),
+    'getLibraryVersion' : IDL.Func(
+        [IDL.Nat],
+        [IDL.Opt(LibraryVersion)],
         ['query'],
       ),
     'getMasterController' : IDL.Func([], [IDL.Principal], ['query']),
@@ -253,8 +389,14 @@ export const idlFactory = ({ IDL }) => {
       ),
     'getStorageBudget' : IDL.Func([], [IDL.Nat], ['query']),
     'getStorageUsed' : IDL.Func([], [IDL.Nat], ['query']),
+    'getTopUpRequest' : IDL.Func(
+        [IDL.Nat],
+        [IDL.Opt(TopUpRequestRecord)],
+        ['query'],
+      ),
     'getUserCount' : IDL.Func([], [IDL.Nat], ['query']),
     'grantOperations' : IDL.Func([IDL.Principal], [Result], []),
+    'listAllFolders' : IDL.Func([], [IDL.Vec(Folder)], ['query']),
     'listClients' : IDL.Func(
         [IDL.Nat, IDL.Nat, IDL.Bool],
         [IDL.Vec(Client)],
@@ -263,6 +405,17 @@ export const idlFactory = ({ IDL }) => {
     'listDocumentsByMatter' : IDL.Func(
         [IDL.Nat, IDL.Nat, IDL.Nat, IDL.Bool],
         [IDL.Vec(Document)],
+        ['query'],
+      ),
+    'listFolderContents' : IDL.Func([FolderScope], [FolderListing], ['query']),
+    'listLibraryItems' : IDL.Func(
+        [LibraryFilter, IDL.Nat, IDL.Nat],
+        [IDL.Vec(LibraryItemSearchResult)],
+        ['query'],
+      ),
+    'listLibraryVersions' : IDL.Func(
+        [IDL.Nat],
+        [IDL.Vec(LibraryVersion)],
         ['query'],
       ),
     'listMatters' : IDL.Func(
@@ -275,6 +428,11 @@ export const idlFactory = ({ IDL }) => {
         [IDL.Vec(Matter)],
         ['query'],
       ),
+    'listTopUpRequests' : IDL.Func(
+        [IDL.Opt(TopUpRequestStatus)],
+        [IDL.Vec(TopUpRequestRecord)],
+        ['query'],
+      ),
     'listUsers' : IDL.Func(
         [],
         [IDL.Vec(IDL.Tuple(IDL.Principal, UserRecord))],
@@ -282,11 +440,17 @@ export const idlFactory = ({ IDL }) => {
       ),
     'listVersions' : IDL.Func([IDL.Nat], [IDL.Vec(DocumentVersion)], ['query']),
     'mattersByStatus' : IDL.Func([], [MatterStatusCounts], ['query']),
-    'prepareDocumentDownload' : IDL.Func([IDL.Nat], [Result_3], []),
+    'moveFolder' : IDL.Func([IDL.Nat, IDL.Opt(IDL.Nat)], [Result], []),
+    'moveLibraryItem' : IDL.Func([IDL.Nat, IDL.Opt(IDL.Nat)], [Result], []),
+    'prepareDocumentDownload' : IDL.Func([IDL.Nat], [Result_4], []),
+    'prepareLibraryDownload' : IDL.Func([IDL.Nat], [Result_3], []),
     'putMatterOnHold' : IDL.Func([IDL.Nat], [Result], []),
     'reactivateClient' : IDL.Func([IDL.Nat], [Result], []),
     'readAuditEntries' : IDL.Func([IDL.Nat, IDL.Nat], [Result_2], []),
+    'removeLibraryItemTag' : IDL.Func([IDL.Nat, IDL.Text], [Result], []),
     'removeUser' : IDL.Func([IDL.Principal], [Result], []),
+    'renameFolder' : IDL.Func([IDL.Nat, IDL.Text], [Result], []),
+    'renameLibraryItem' : IDL.Func([IDL.Nat, IDL.Text], [Result], []),
     'reopenMatter' : IDL.Func([IDL.Nat], [Result], []),
     'resumeMatter' : IDL.Func([IDL.Nat], [Result], []),
     'revokeOperations' : IDL.Func([], [Result], []),
@@ -300,13 +464,34 @@ export const idlFactory = ({ IDL }) => {
         [IDL.Vec(DocumentSearchResult)],
         ['query'],
       ),
+    'searchLibrary' : IDL.Func(
+        [LibraryFilter, IDL.Nat, IDL.Nat],
+        [IDL.Vec(LibraryItemSearchResult)],
+        ['query'],
+      ),
     'searchMatters' : IDL.Func(
         [MatterFilter, IDL.Nat, IDL.Nat],
         [IDL.Vec(Matter)],
         ['query'],
       ),
+    'setLibraryItemTags' : IDL.Func([IDL.Nat, IDL.Vec(IDL.Text)], [Result], []),
     'setStorageBudget' : IDL.Func([IDL.Nat], [Result], []),
     'setUserRole' : IDL.Func([IDL.Principal, Role], [Result], []),
+    'startLibraryUpload' : IDL.Func(
+        [
+          IDL.Text,
+          IDL.Opt(IDL.Nat),
+          IDL.Vec(IDL.Text),
+          IDL.Text,
+          IDL.Text,
+          IDL.Text,
+          IDL.Nat,
+          IDL.Text,
+          IDL.Opt(IDL.Nat),
+        ],
+        [Result_1],
+        [],
+      ),
     'startUpload' : IDL.Func(
         [IDL.Nat, IDL.Text, IDL.Text, IDL.Nat, IDL.Text, IDL.Opt(IDL.Nat)],
         [Result_1],
@@ -314,6 +499,7 @@ export const idlFactory = ({ IDL }) => {
       ),
     'suspendUser' : IDL.Func([IDL.Principal], [Result], []),
     'transferMasterController' : IDL.Func([IDL.Principal], [Result], []),
+    'unarchiveLibraryItem' : IDL.Func([IDL.Nat], [Result], []),
     'unsuspendUser' : IDL.Func([IDL.Principal], [Result], []),
     'updateClient' : IDL.Func(
         [
@@ -325,6 +511,11 @@ export const idlFactory = ({ IDL }) => {
           IDL.Opt(IDL.Text),
           IDL.Opt(IDL.Text),
         ],
+        [Result],
+        [],
+      ),
+    'updateLibraryItemDescription' : IDL.Func(
+        [IDL.Nat, IDL.Text],
         [Result],
         [],
       ),

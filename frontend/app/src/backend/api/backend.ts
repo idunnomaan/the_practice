@@ -65,6 +65,31 @@ export interface MatterStatusCounts {
     onHold: bigint;
     archived: bigint;
 }
+export interface TopUpRequestRecord {
+    id: bigint;
+    status: TopUpRequestStatus;
+    note: string;
+    createdAt: Time;
+    createdBy: Principal;
+    requestedTrillionCycles: bigint;
+    cancelledAt?: Time;
+    cancelledBy?: Principal;
+    fulfilledAt?: Time;
+    fulfilledBy?: Principal;
+}
+export interface LibraryVersion {
+    itemId: bigint;
+    versionId: bigint;
+    sha256: Uint8Array;
+    contentType: string;
+    blob: Uint8Array;
+    filename: string;
+    sizeBytes: bigint;
+    uploadNotes: string;
+    versionNumber: bigint;
+    uploadedAt: Time;
+    uploadedBy: Principal;
+}
 export interface DocumentVersion {
     versionId: bigint;
     sha256: Uint8Array;
@@ -86,17 +111,13 @@ export interface Document {
     matterId: bigint;
     currentVersionId: bigint;
 }
-export interface AuditEntry {
-    id: bigint;
-    action: string;
-    target?: Principal;
-    timestamp: Time;
-    caller: Principal;
-    outcome: AuditOutcome;
-}
 export type Result_5 = {
     __kind__: "ok";
-    ok: ExportManifest;
+    ok: {
+        versionId: bigint;
+        sha256: Uint8Array;
+        documentId: bigint;
+    };
 } | {
     __kind__: "err";
     err: string;
@@ -124,26 +145,45 @@ export interface UserRecord {
     suspended: boolean;
 }
 export interface ThePracticeInterface {
+    abandonLibraryUpload(sessionId: bigint): Promise<Result>;
     abandonUpload(sessionId: bigint): Promise<Result>;
+    addLibraryItemTag(itemId: bigint, tag: string): Promise<Result>;
     addUser(p: Principal, role: Role): Promise<Result>;
     appendChunk(sessionId: bigint, chunkIndex: bigint, chunkBytes: Uint8Array): Promise<Result>;
+    appendLibraryChunk(sessionId: bigint, chunkIndex: bigint, chunkBytes: Uint8Array): Promise<Result>;
+    archiveLibraryItem(itemId: bigint): Promise<Result>;
     archiveMatter(id: bigint): Promise<Result>;
     assignPartnerToMatter(id: bigint, partner: Principal | null): Promise<Result>;
+    cancelTopUpRequest(id: bigint): Promise<Result>;
     clientsByStatus(): Promise<ClientStatusCounts>;
     closeMatter(id: bigint): Promise<Result>;
     createClient(name: string, clientType: ClientType, primaryEmail: string | null, primaryPhone: string | null, identifier: string | null, notes: string): Promise<Result_1>;
-    createExportManifest(): Promise<Result_5>;
+    createExportManifest(): Promise<Result_7>;
+    createFolder(name: string, parentId: bigint | null): Promise<Result_1>;
     createMatter(title: string, matterType: string, clientId: bigint, assignedPartner: Principal | null, description: string): Promise<Result_1>;
+    createTopUpRequest(amountT: bigint, note: string): Promise<Result_1>;
     deactivateClient(id: bigint): Promise<Result>;
     deleteDocument(documentId: bigint): Promise<Result>;
+    deleteFolder(folderId: bigint): Promise<Result>;
+    deleteLibraryItem(itemId: bigint): Promise<Result>;
     documentsByStatus(): Promise<DocumentStatusCounts>;
-    finalizeUpload(sessionId: bigint): Promise<Result_4>;
+    finalizeLibraryUpload(sessionId: bigint): Promise<Result_6>;
+    finalizeUpload(sessionId: bigint): Promise<Result_5>;
+    fulfillTopUpRequest(id: bigint): Promise<Result>;
     getChunk(versionId: bigint, chunkIndex: bigint): Promise<Uint8Array | null>;
     getClient(id: bigint): Promise<Client | null>;
     getClientCount(): Promise<bigint>;
+    getCycleBalance(): Promise<bigint>;
     getDocument(id: bigint): Promise<Document | null>;
     getDocumentCount(): Promise<bigint>;
     getDocumentVersion(versionId: bigint): Promise<DocumentVersion | null>;
+    getFolder(folderId: bigint): Promise<Folder | null>;
+    getFolderCount(): Promise<bigint>;
+    getFolderDepth(folderId: bigint): Promise<bigint | null>;
+    getLibraryChunk(versionId: bigint, chunkIndex: bigint): Promise<Uint8Array | null>;
+    getLibraryItem(id: bigint): Promise<LibraryItem | null>;
+    getLibraryItemCount(): Promise<bigint>;
+    getLibraryVersion(versionId: bigint): Promise<LibraryVersion | null>;
     getMasterController(): Promise<Principal>;
     getMatter(id: bigint): Promise<Matter | null>;
     getMatterCount(): Promise<bigint>;
@@ -151,42 +191,62 @@ export interface ThePracticeInterface {
     getOperationsPrincipal(): Promise<Principal | null>;
     getStorageBudget(): Promise<bigint>;
     getStorageUsed(): Promise<bigint>;
+    getTopUpRequest(id: bigint): Promise<TopUpRequestRecord | null>;
     getUserCount(): Promise<bigint>;
     grantOperations(p: Principal): Promise<Result>;
+    listAllFolders(): Promise<Array<Folder>>;
     listClients(after: bigint, limit: bigint, includeInactive: boolean): Promise<Array<Client>>;
     listDocumentsByMatter(matterId: bigint, after: bigint, limit: bigint, includeDeleted: boolean): Promise<Array<Document>>;
+    listFolderContents(scope: FolderScope): Promise<FolderListing>;
+    listLibraryItems(filter: LibraryFilter, after: bigint, limit: bigint): Promise<Array<LibraryItemSearchResult>>;
+    listLibraryVersions(itemId: bigint): Promise<Array<LibraryVersion>>;
     listMatters(after: bigint, limit: bigint, statusFilter: MatterStatus | null): Promise<Array<Matter>>;
     listMattersByClient(clientId: bigint, after: bigint, limit: bigint, statusFilter: MatterStatus | null): Promise<Array<Matter>>;
+    listTopUpRequests(statusFilter: TopUpRequestStatus | null): Promise<Array<TopUpRequestRecord>>;
     listUsers(): Promise<Array<[Principal, UserRecord]>>;
     listVersions(documentId: bigint): Promise<Array<DocumentVersion>>;
     mattersByStatus(): Promise<MatterStatusCounts>;
-    prepareDocumentDownload(versionId: bigint): Promise<Result_3>;
+    moveFolder(folderId: bigint, newParentId: bigint | null): Promise<Result>;
+    moveLibraryItem(itemId: bigint, newFolderId: bigint | null): Promise<Result>;
+    prepareDocumentDownload(versionId: bigint): Promise<Result_4>;
+    prepareLibraryDownload(versionId: bigint): Promise<Result_3>;
     putMatterOnHold(id: bigint): Promise<Result>;
     reactivateClient(id: bigint): Promise<Result>;
     readAuditEntries(after: bigint, limit: bigint): Promise<Result_2>;
+    removeLibraryItemTag(itemId: bigint, tag: string): Promise<Result>;
     removeUser(p: Principal): Promise<Result>;
+    renameFolder(folderId: bigint, newName: string): Promise<Result>;
+    renameLibraryItem(itemId: bigint, newName: string): Promise<Result>;
     reopenMatter(id: bigint): Promise<Result>;
     resumeMatter(id: bigint): Promise<Result>;
     revokeOperations(): Promise<Result>;
     searchClients(filter: ClientFilter, after: bigint, limit: bigint): Promise<Array<Client>>;
     searchDocuments(filter: DocumentFilter, after: bigint, limit: bigint): Promise<Array<DocumentSearchResult>>;
+    searchLibrary(filter: LibraryFilter, after: bigint, limit: bigint): Promise<Array<LibraryItemSearchResult>>;
     searchMatters(filter: MatterFilter, after: bigint, limit: bigint): Promise<Array<Matter>>;
+    setLibraryItemTags(itemId: bigint, tags: Array<string>): Promise<Result>;
     setStorageBudget(newBudgetBytes: bigint): Promise<Result>;
     setUserRole(p: Principal, role: Role): Promise<Result>;
+    startLibraryUpload(name: string, folderId: bigint | null, tags: Array<string>, description: string, filename: string, contentType: string, totalSizeBytes: bigint, uploadNotes: string, replacesItemId: bigint | null): Promise<Result_1>;
     startUpload(matterId: bigint, filename: string, contentType: string, totalSizeBytes: bigint, uploadNotes: string, replacesDocumentId: bigint | null): Promise<Result_1>;
     suspendUser(p: Principal): Promise<Result>;
     transferMasterController(p: Principal): Promise<Result>;
+    unarchiveLibraryItem(itemId: bigint): Promise<Result>;
     unsuspendUser(p: Principal): Promise<Result>;
     updateClient(id: bigint, name: string | null, clientType: ClientType | null, primaryEmail: string | null, primaryPhone: string | null, identifier: string | null, notes: string | null): Promise<Result>;
+    updateLibraryItemDescription(itemId: bigint, newDescription: string): Promise<Result>;
     updateMatter(id: bigint, title: string | null, matterType: string | null, clientId: bigint | null, assignedPartner: Some<Principal | null> | None, description: string | null): Promise<Result>;
     whoAmI(): Promise<Principal>;
 }
 export type Result_4 = {
     __kind__: "ok";
     ok: {
-        versionId: bigint;
         sha256: Uint8Array;
+        contentType: string;
+        filename: string;
+        chunkCount: bigint;
         documentId: bigint;
+        sizeBytes: bigint;
     };
 } | {
     __kind__: "err";
@@ -204,6 +264,21 @@ export interface ClientFilter {
     statusFilter?: ClientStatus;
     identifierContains?: string;
 }
+export interface AuditEntry {
+    id: bigint;
+    action: string;
+    target?: Principal;
+    timestamp: Time;
+    caller: Principal;
+    outcome: AuditOutcome;
+}
+export type Result_7 = {
+    __kind__: "ok";
+    ok: ExportManifest;
+} | {
+    __kind__: "err";
+    err: string;
+};
 export interface MatterFilter {
     openedBefore?: Time;
     clientId?: bigint;
@@ -214,6 +289,56 @@ export interface MatterFilter {
     statusFilter?: MatterStatus;
     matterTypeContains?: string;
     assignedPartner?: Principal;
+}
+export interface LibraryItem {
+    id: bigint;
+    status: LibraryItemStatus;
+    name: string;
+    createdAt: Time;
+    createdBy: Principal;
+    tags: Array<string>;
+    description: string;
+    folderId?: bigint;
+    currentVersionId: bigint;
+}
+export interface Folder {
+    id: bigint;
+    name: string;
+    createdAt: Time;
+    createdBy: Principal;
+    parentId?: bigint;
+}
+export interface ExportManifest {
+    libraryItems: Array<{
+        itemId: bigint;
+        versionIds: Array<bigint>;
+    }>;
+    totalVersions: bigint;
+    totalFolders: bigint;
+    documents: Array<{
+        versionIds: Array<bigint>;
+        documentId: bigint;
+    }>;
+    matterIds: Array<bigint>;
+    totalLibraryItems: bigint;
+    totalMatters: bigint;
+    generatedAt: Time;
+    generatedBy: Principal;
+    userPrincipals: Array<Principal>;
+    folders: Array<Folder>;
+    totalLibraryVersions: bigint;
+    storageUsedBytes: bigint;
+    masterController: Principal;
+    totalClients: bigint;
+    storageBudgetBytes: bigint;
+    clientIds: Array<bigint>;
+    totalAuditEntries: bigint;
+    operationsPrincipal?: Principal;
+    totalDocuments: bigint;
+}
+export interface ClientStatusCounts {
+    active: bigint;
+    inactive: bigint;
 }
 export interface Client {
     id: bigint;
@@ -229,29 +354,44 @@ export interface Client {
     primaryPhone?: string;
     identifier?: string;
 }
-export interface ExportManifest {
-    totalVersions: bigint;
-    documents: Array<{
-        versionIds: Array<bigint>;
-        documentId: bigint;
-    }>;
-    matterIds: Array<bigint>;
-    totalMatters: bigint;
-    generatedAt: Time;
-    generatedBy: Principal;
-    userPrincipals: Array<Principal>;
-    storageUsedBytes: bigint;
-    masterController: Principal;
-    totalClients: bigint;
-    storageBudgetBytes: bigint;
-    clientIds: Array<bigint>;
-    totalAuditEntries: bigint;
-    operationsPrincipal?: Principal;
-    totalDocuments: bigint;
+export interface FolderListing {
+    folders: Array<Folder>;
+    items: Array<LibraryItemSearchResult>;
 }
-export interface ClientStatusCounts {
-    active: bigint;
-    inactive: bigint;
+export type Result_6 = {
+    __kind__: "ok";
+    ok: {
+        itemId: bigint;
+        versionId: bigint;
+        sha256: Uint8Array;
+    };
+} | {
+    __kind__: "err";
+    err: string;
+};
+export type FolderScope = {
+    __kind__: "Any";
+    Any: null;
+} | {
+    __kind__: "Folder";
+    Folder: bigint;
+} | {
+    __kind__: "Root";
+    Root: null;
+} | {
+    __kind__: "Subtree";
+    Subtree: bigint;
+};
+export interface LibraryFilter {
+    folderScope: FolderScope;
+    currentFilenameContains?: string;
+    contentType?: string;
+    nameContains?: string;
+    uploadedAfter?: Time;
+    tagsContainsAny?: Array<string>;
+    statusFilter?: LibraryItemStatus;
+    uploadedBy?: Principal;
+    uploadedBefore?: Time;
 }
 export interface Matter {
     id: bigint;
@@ -278,11 +418,12 @@ export type Result = {
 export type Result_3 = {
     __kind__: "ok";
     ok: {
+        itemId: bigint;
+        versionId: bigint;
         sha256: Uint8Array;
         contentType: string;
         filename: string;
         chunkCount: bigint;
-        documentId: bigint;
         sizeBytes: bigint;
     };
 } | {
@@ -296,6 +437,10 @@ export type AuditOutcome = {
     __kind__: "err";
     err: string;
 };
+export interface LibraryItemSearchResult {
+    item: LibraryItem;
+    currentVersion: LibraryVersion;
+}
 export interface DocumentStatusCounts {
     deleted: bigint;
     active: bigint;
@@ -313,6 +458,11 @@ export enum DocumentStatus {
     Active = "Active",
     Deleted = "Deleted"
 }
+export enum LibraryItemStatus {
+    Active = "Active",
+    Archived = "Archived",
+    Deleted = "Deleted"
+}
 export enum MatterStatus {
     OnHold = "OnHold",
     Open = "Open",
@@ -324,13 +474,26 @@ export enum Role {
     Associate = "Associate",
     Partner = "Partner"
 }
+export enum TopUpRequestStatus {
+    Cancelled = "Cancelled",
+    Fulfilled = "Fulfilled",
+    Pending = "Pending"
+}
 export interface backendInterface extends ThePracticeInterface {
 }
-import type { AuditEntry as _AuditEntry, AuditOutcome as _AuditOutcome, Client as _Client, ClientFilter as _ClientFilter, ClientStatus as _ClientStatus, ClientType as _ClientType, Document as _Document, DocumentFilter as _DocumentFilter, DocumentSearchResult as _DocumentSearchResult, DocumentStatus as _DocumentStatus, DocumentVersion as _DocumentVersion, ExportManifest as _ExportManifest, Matter as _Matter, MatterFilter as _MatterFilter, MatterStatus as _MatterStatus, Result as _Result, Result_1 as _Result_1, Result_2 as _Result_2, Result_3 as _Result_3, Result_4 as _Result_4, Result_5 as _Result_5, Role as _Role, Time as _Time, UserRecord as _UserRecord } from "./declarations/backend.did";
+import type { AuditEntry as _AuditEntry, AuditOutcome as _AuditOutcome, Client as _Client, ClientFilter as _ClientFilter, ClientStatus as _ClientStatus, ClientType as _ClientType, Document as _Document, DocumentFilter as _DocumentFilter, DocumentSearchResult as _DocumentSearchResult, DocumentStatus as _DocumentStatus, DocumentVersion as _DocumentVersion, ExportManifest as _ExportManifest, Folder as _Folder, FolderListing as _FolderListing, FolderScope as _FolderScope, LibraryFilter as _LibraryFilter, LibraryItem as _LibraryItem, LibraryItemSearchResult as _LibraryItemSearchResult, LibraryItemStatus as _LibraryItemStatus, LibraryVersion as _LibraryVersion, Matter as _Matter, MatterFilter as _MatterFilter, MatterStatus as _MatterStatus, Result as _Result, Result_1 as _Result_1, Result_2 as _Result_2, Result_3 as _Result_3, Result_4 as _Result_4, Result_5 as _Result_5, Result_6 as _Result_6, Result_7 as _Result_7, Role as _Role, Time as _Time, TopUpRequestRecord as _TopUpRequestRecord, TopUpRequestStatus as _TopUpRequestStatus, UserRecord as _UserRecord } from "./declarations/backend.did";
 export class Backend implements backendInterface {
     constructor(private actor: ActorSubclass<_SERVICE>){}
+    async abandonLibraryUpload(arg0: bigint): Promise<Result> {
+        const result = await this.actor.abandonLibraryUpload(arg0);
+        return from_candid_Result_n1(result);
+    }
     async abandonUpload(arg0: bigint): Promise<Result> {
         const result = await this.actor.abandonUpload(arg0);
+        return from_candid_Result_n1(result);
+    }
+    async addLibraryItemTag(arg0: bigint, arg1: string): Promise<Result> {
+        const result = await this.actor.addLibraryItemTag(arg0, arg1);
         return from_candid_Result_n1(result);
     }
     async addUser(arg0: Principal, arg1: Role): Promise<Result> {
@@ -341,12 +504,24 @@ export class Backend implements backendInterface {
         const result = await this.actor.appendChunk(arg0, arg1, arg2);
         return from_candid_Result_n1(result);
     }
+    async appendLibraryChunk(arg0: bigint, arg1: bigint, arg2: Uint8Array): Promise<Result> {
+        const result = await this.actor.appendLibraryChunk(arg0, arg1, arg2);
+        return from_candid_Result_n1(result);
+    }
+    async archiveLibraryItem(arg0: bigint): Promise<Result> {
+        const result = await this.actor.archiveLibraryItem(arg0);
+        return from_candid_Result_n1(result);
+    }
     async archiveMatter(arg0: bigint): Promise<Result> {
         const result = await this.actor.archiveMatter(arg0);
         return from_candid_Result_n1(result);
     }
     async assignPartnerToMatter(arg0: bigint, arg1: Principal | null): Promise<Result> {
         const result = await this.actor.assignPartnerToMatter(arg0, to_candid_opt_n5(arg1));
+        return from_candid_Result_n1(result);
+    }
+    async cancelTopUpRequest(arg0: bigint): Promise<Result> {
+        const result = await this.actor.cancelTopUpRequest(arg0);
         return from_candid_Result_n1(result);
     }
     async clientsByStatus(): Promise<ClientStatusCounts> {
@@ -361,12 +536,20 @@ export class Backend implements backendInterface {
         const result = await this.actor.createClient(arg0, to_candid_ClientType_n6(arg1), to_candid_opt_n8(arg2), to_candid_opt_n8(arg3), to_candid_opt_n8(arg4), arg5);
         return from_candid_Result_1_n9(result);
     }
-    async createExportManifest(): Promise<Result_5> {
+    async createExportManifest(): Promise<Result_7> {
         const result = await this.actor.createExportManifest();
-        return from_candid_Result_5_n11(result);
+        return from_candid_Result_7_n11(result);
+    }
+    async createFolder(arg0: string, arg1: bigint | null): Promise<Result_1> {
+        const result = await this.actor.createFolder(arg0, to_candid_opt_n20(arg1));
+        return from_candid_Result_1_n9(result);
     }
     async createMatter(arg0: string, arg1: string, arg2: bigint, arg3: Principal | null, arg4: string): Promise<Result_1> {
         const result = await this.actor.createMatter(arg0, arg1, arg2, to_candid_opt_n5(arg3), arg4);
+        return from_candid_Result_1_n9(result);
+    }
+    async createTopUpRequest(arg0: bigint, arg1: string): Promise<Result_1> {
+        const result = await this.actor.createTopUpRequest(arg0, arg1);
         return from_candid_Result_1_n9(result);
     }
     async deactivateClient(arg0: bigint): Promise<Result> {
@@ -377,29 +560,49 @@ export class Backend implements backendInterface {
         const result = await this.actor.deleteDocument(arg0);
         return from_candid_Result_n1(result);
     }
+    async deleteFolder(arg0: bigint): Promise<Result> {
+        const result = await this.actor.deleteFolder(arg0);
+        return from_candid_Result_n1(result);
+    }
+    async deleteLibraryItem(arg0: bigint): Promise<Result> {
+        const result = await this.actor.deleteLibraryItem(arg0);
+        return from_candid_Result_n1(result);
+    }
     async documentsByStatus(): Promise<DocumentStatusCounts> {
         const result = await this.actor.documentsByStatus();
         return result;
     }
-    async finalizeUpload(arg0: bigint): Promise<Result_4> {
+    async finalizeLibraryUpload(arg0: bigint): Promise<Result_6> {
+        const result = await this.actor.finalizeLibraryUpload(arg0);
+        return from_candid_Result_6_n21(result);
+    }
+    async finalizeUpload(arg0: bigint): Promise<Result_5> {
         const result = await this.actor.finalizeUpload(arg0);
-        return from_candid_Result_4_n16(result);
+        return from_candid_Result_5_n23(result);
+    }
+    async fulfillTopUpRequest(arg0: bigint): Promise<Result> {
+        const result = await this.actor.fulfillTopUpRequest(arg0);
+        return from_candid_Result_n1(result);
     }
     async getChunk(arg0: bigint, arg1: bigint): Promise<Uint8Array | null> {
         const result = await this.actor.getChunk(arg0, arg1);
-        return from_candid_opt_n18(result);
+        return from_candid_opt_n25(result);
     }
     async getClient(arg0: bigint): Promise<Client | null> {
         const result = await this.actor.getClient(arg0);
-        return from_candid_opt_n19(result);
+        return from_candid_opt_n26(result);
     }
     async getClientCount(): Promise<bigint> {
         const result = await this.actor.getClientCount();
         return result;
     }
+    async getCycleBalance(): Promise<bigint> {
+        const result = await this.actor.getCycleBalance();
+        return result;
+    }
     async getDocument(arg0: bigint): Promise<Document | null> {
         const result = await this.actor.getDocument(arg0);
-        return from_candid_opt_n27(result);
+        return from_candid_opt_n34(result);
     }
     async getDocumentCount(): Promise<bigint> {
         const result = await this.actor.getDocumentCount();
@@ -407,7 +610,35 @@ export class Backend implements backendInterface {
     }
     async getDocumentVersion(arg0: bigint): Promise<DocumentVersion | null> {
         const result = await this.actor.getDocumentVersion(arg0);
-        return from_candid_opt_n32(result);
+        return from_candid_opt_n39(result);
+    }
+    async getFolder(arg0: bigint): Promise<Folder | null> {
+        const result = await this.actor.getFolder(arg0);
+        return from_candid_opt_n40(result);
+    }
+    async getFolderCount(): Promise<bigint> {
+        const result = await this.actor.getFolderCount();
+        return result;
+    }
+    async getFolderDepth(arg0: bigint): Promise<bigint | null> {
+        const result = await this.actor.getFolderDepth(arg0);
+        return from_candid_opt_n18(result);
+    }
+    async getLibraryChunk(arg0: bigint, arg1: bigint): Promise<Uint8Array | null> {
+        const result = await this.actor.getLibraryChunk(arg0, arg1);
+        return from_candid_opt_n25(result);
+    }
+    async getLibraryItem(arg0: bigint): Promise<LibraryItem | null> {
+        const result = await this.actor.getLibraryItem(arg0);
+        return from_candid_opt_n41(result);
+    }
+    async getLibraryItemCount(): Promise<bigint> {
+        const result = await this.actor.getLibraryItemCount();
+        return result;
+    }
+    async getLibraryVersion(arg0: bigint): Promise<LibraryVersion | null> {
+        const result = await this.actor.getLibraryVersion(arg0);
+        return from_candid_opt_n46(result);
     }
     async getMasterController(): Promise<Principal> {
         const result = await this.actor.getMasterController();
@@ -415,7 +646,7 @@ export class Backend implements backendInterface {
     }
     async getMatter(arg0: bigint): Promise<Matter | null> {
         const result = await this.actor.getMatter(arg0);
-        return from_candid_opt_n33(result);
+        return from_candid_opt_n47(result);
     }
     async getMatterCount(): Promise<bigint> {
         const result = await this.actor.getMatterCount();
@@ -423,11 +654,11 @@ export class Backend implements backendInterface {
     }
     async getMyRole(): Promise<Role | null> {
         const result = await this.actor.getMyRole();
-        return from_candid_opt_n39(result);
+        return from_candid_opt_n53(result);
     }
     async getOperationsPrincipal(): Promise<Principal | null> {
         const result = await this.actor.getOperationsPrincipal();
-        return from_candid_opt_n15(result);
+        return from_candid_opt_n19(result);
     }
     async getStorageBudget(): Promise<bigint> {
         const result = await this.actor.getStorageBudget();
@@ -437,6 +668,10 @@ export class Backend implements backendInterface {
         const result = await this.actor.getStorageUsed();
         return result;
     }
+    async getTopUpRequest(arg0: bigint): Promise<TopUpRequestRecord | null> {
+        const result = await this.actor.getTopUpRequest(arg0);
+        return from_candid_opt_n56(result);
+    }
     async getUserCount(): Promise<bigint> {
         const result = await this.actor.getUserCount();
         return result;
@@ -445,25 +680,45 @@ export class Backend implements backendInterface {
         const result = await this.actor.grantOperations(arg0);
         return from_candid_Result_n1(result);
     }
+    async listAllFolders(): Promise<Array<Folder>> {
+        const result = await this.actor.listAllFolders();
+        return from_candid_vec_n15(result);
+    }
     async listClients(arg0: bigint, arg1: bigint, arg2: boolean): Promise<Array<Client>> {
         const result = await this.actor.listClients(arg0, arg1, arg2);
-        return from_candid_vec_n42(result);
+        return from_candid_vec_n61(result);
     }
     async listDocumentsByMatter(arg0: bigint, arg1: bigint, arg2: bigint, arg3: boolean): Promise<Array<Document>> {
         const result = await this.actor.listDocumentsByMatter(arg0, arg1, arg2, arg3);
-        return from_candid_vec_n43(result);
+        return from_candid_vec_n62(result);
+    }
+    async listFolderContents(arg0: FolderScope): Promise<FolderListing> {
+        const result = await this.actor.listFolderContents(to_candid_FolderScope_n63(arg0));
+        return from_candid_FolderListing_n65(result);
+    }
+    async listLibraryItems(arg0: LibraryFilter, arg1: bigint, arg2: bigint): Promise<Array<LibraryItemSearchResult>> {
+        const result = await this.actor.listLibraryItems(to_candid_LibraryFilter_n70(arg0), arg1, arg2);
+        return from_candid_vec_n67(result);
+    }
+    async listLibraryVersions(arg0: bigint): Promise<Array<LibraryVersion>> {
+        const result = await this.actor.listLibraryVersions(arg0);
+        return result;
     }
     async listMatters(arg0: bigint, arg1: bigint, arg2: MatterStatus | null): Promise<Array<Matter>> {
-        const result = await this.actor.listMatters(arg0, arg1, to_candid_opt_n44(arg2));
-        return from_candid_vec_n47(result);
+        const result = await this.actor.listMatters(arg0, arg1, to_candid_opt_n74(arg2));
+        return from_candid_vec_n77(result);
     }
     async listMattersByClient(arg0: bigint, arg1: bigint, arg2: bigint, arg3: MatterStatus | null): Promise<Array<Matter>> {
-        const result = await this.actor.listMattersByClient(arg0, arg1, arg2, to_candid_opt_n44(arg3));
-        return from_candid_vec_n47(result);
+        const result = await this.actor.listMattersByClient(arg0, arg1, arg2, to_candid_opt_n74(arg3));
+        return from_candid_vec_n77(result);
+    }
+    async listTopUpRequests(arg0: TopUpRequestStatus | null): Promise<Array<TopUpRequestRecord>> {
+        const result = await this.actor.listTopUpRequests(to_candid_opt_n78(arg0));
+        return from_candid_vec_n81(result);
     }
     async listUsers(): Promise<Array<[Principal, UserRecord]>> {
         const result = await this.actor.listUsers();
-        return from_candid_vec_n48(result);
+        return from_candid_vec_n82(result);
     }
     async listVersions(arg0: bigint): Promise<Array<DocumentVersion>> {
         const result = await this.actor.listVersions(arg0);
@@ -473,9 +728,21 @@ export class Backend implements backendInterface {
         const result = await this.actor.mattersByStatus();
         return result;
     }
-    async prepareDocumentDownload(arg0: bigint): Promise<Result_3> {
+    async moveFolder(arg0: bigint, arg1: bigint | null): Promise<Result> {
+        const result = await this.actor.moveFolder(arg0, to_candid_opt_n20(arg1));
+        return from_candid_Result_n1(result);
+    }
+    async moveLibraryItem(arg0: bigint, arg1: bigint | null): Promise<Result> {
+        const result = await this.actor.moveLibraryItem(arg0, to_candid_opt_n20(arg1));
+        return from_candid_Result_n1(result);
+    }
+    async prepareDocumentDownload(arg0: bigint): Promise<Result_4> {
         const result = await this.actor.prepareDocumentDownload(arg0);
-        return from_candid_Result_3_n52(result);
+        return from_candid_Result_4_n86(result);
+    }
+    async prepareLibraryDownload(arg0: bigint): Promise<Result_3> {
+        const result = await this.actor.prepareLibraryDownload(arg0);
+        return from_candid_Result_3_n88(result);
     }
     async putMatterOnHold(arg0: bigint): Promise<Result> {
         const result = await this.actor.putMatterOnHold(arg0);
@@ -487,10 +754,22 @@ export class Backend implements backendInterface {
     }
     async readAuditEntries(arg0: bigint, arg1: bigint): Promise<Result_2> {
         const result = await this.actor.readAuditEntries(arg0, arg1);
-        return from_candid_Result_2_n54(result);
+        return from_candid_Result_2_n90(result);
+    }
+    async removeLibraryItemTag(arg0: bigint, arg1: string): Promise<Result> {
+        const result = await this.actor.removeLibraryItemTag(arg0, arg1);
+        return from_candid_Result_n1(result);
     }
     async removeUser(arg0: Principal): Promise<Result> {
         const result = await this.actor.removeUser(arg0);
+        return from_candid_Result_n1(result);
+    }
+    async renameFolder(arg0: bigint, arg1: string): Promise<Result> {
+        const result = await this.actor.renameFolder(arg0, arg1);
+        return from_candid_Result_n1(result);
+    }
+    async renameLibraryItem(arg0: bigint, arg1: string): Promise<Result> {
+        const result = await this.actor.renameLibraryItem(arg0, arg1);
         return from_candid_Result_n1(result);
     }
     async reopenMatter(arg0: bigint): Promise<Result> {
@@ -506,16 +785,24 @@ export class Backend implements backendInterface {
         return from_candid_Result_n1(result);
     }
     async searchClients(arg0: ClientFilter, arg1: bigint, arg2: bigint): Promise<Array<Client>> {
-        const result = await this.actor.searchClients(to_candid_ClientFilter_n60(arg0), arg1, arg2);
-        return from_candid_vec_n42(result);
+        const result = await this.actor.searchClients(to_candid_ClientFilter_n96(arg0), arg1, arg2);
+        return from_candid_vec_n61(result);
     }
     async searchDocuments(arg0: DocumentFilter, arg1: bigint, arg2: bigint): Promise<Array<DocumentSearchResult>> {
-        const result = await this.actor.searchDocuments(to_candid_DocumentFilter_n64(arg0), arg1, arg2);
-        return from_candid_vec_n68(result);
+        const result = await this.actor.searchDocuments(to_candid_DocumentFilter_n100(arg0), arg1, arg2);
+        return from_candid_vec_n104(result);
+    }
+    async searchLibrary(arg0: LibraryFilter, arg1: bigint, arg2: bigint): Promise<Array<LibraryItemSearchResult>> {
+        const result = await this.actor.searchLibrary(to_candid_LibraryFilter_n70(arg0), arg1, arg2);
+        return from_candid_vec_n67(result);
     }
     async searchMatters(arg0: MatterFilter, arg1: bigint, arg2: bigint): Promise<Array<Matter>> {
-        const result = await this.actor.searchMatters(to_candid_MatterFilter_n71(arg0), arg1, arg2);
-        return from_candid_vec_n47(result);
+        const result = await this.actor.searchMatters(to_candid_MatterFilter_n107(arg0), arg1, arg2);
+        return from_candid_vec_n77(result);
+    }
+    async setLibraryItemTags(arg0: bigint, arg1: Array<string>): Promise<Result> {
+        const result = await this.actor.setLibraryItemTags(arg0, arg1);
+        return from_candid_Result_n1(result);
     }
     async setStorageBudget(arg0: bigint): Promise<Result> {
         const result = await this.actor.setStorageBudget(arg0);
@@ -525,8 +812,12 @@ export class Backend implements backendInterface {
         const result = await this.actor.setUserRole(arg0, to_candid_Role_n3(arg1));
         return from_candid_Result_n1(result);
     }
+    async startLibraryUpload(arg0: string, arg1: bigint | null, arg2: Array<string>, arg3: string, arg4: string, arg5: string, arg6: bigint, arg7: string, arg8: bigint | null): Promise<Result_1> {
+        const result = await this.actor.startLibraryUpload(arg0, to_candid_opt_n20(arg1), arg2, arg3, arg4, arg5, arg6, arg7, to_candid_opt_n20(arg8));
+        return from_candid_Result_1_n9(result);
+    }
     async startUpload(arg0: bigint, arg1: string, arg2: string, arg3: bigint, arg4: string, arg5: bigint | null): Promise<Result_1> {
-        const result = await this.actor.startUpload(arg0, arg1, arg2, arg3, arg4, to_candid_opt_n73(arg5));
+        const result = await this.actor.startUpload(arg0, arg1, arg2, arg3, arg4, to_candid_opt_n20(arg5));
         return from_candid_Result_1_n9(result);
     }
     async suspendUser(arg0: Principal): Promise<Result> {
@@ -537,16 +828,24 @@ export class Backend implements backendInterface {
         const result = await this.actor.transferMasterController(arg0);
         return from_candid_Result_n1(result);
     }
+    async unarchiveLibraryItem(arg0: bigint): Promise<Result> {
+        const result = await this.actor.unarchiveLibraryItem(arg0);
+        return from_candid_Result_n1(result);
+    }
     async unsuspendUser(arg0: Principal): Promise<Result> {
         const result = await this.actor.unsuspendUser(arg0);
         return from_candid_Result_n1(result);
     }
     async updateClient(arg0: bigint, arg1: string | null, arg2: ClientType | null, arg3: string | null, arg4: string | null, arg5: string | null, arg6: string | null): Promise<Result> {
-        const result = await this.actor.updateClient(arg0, to_candid_opt_n8(arg1), to_candid_opt_n74(arg2), to_candid_opt_n8(arg3), to_candid_opt_n8(arg4), to_candid_opt_n8(arg5), to_candid_opt_n8(arg6));
+        const result = await this.actor.updateClient(arg0, to_candid_opt_n8(arg1), to_candid_opt_n109(arg2), to_candid_opt_n8(arg3), to_candid_opt_n8(arg4), to_candid_opt_n8(arg5), to_candid_opt_n8(arg6));
+        return from_candid_Result_n1(result);
+    }
+    async updateLibraryItemDescription(arg0: bigint, arg1: string): Promise<Result> {
+        const result = await this.actor.updateLibraryItemDescription(arg0, arg1);
         return from_candid_Result_n1(result);
     }
     async updateMatter(arg0: bigint, arg1: string | null, arg2: string | null, arg3: bigint | null, arg4: Some<Principal | null> | None, arg5: string | null): Promise<Result> {
-        const result = await this.actor.updateMatter(arg0, to_candid_opt_n8(arg1), to_candid_opt_n8(arg2), to_candid_opt_n73(arg3), to_candid_opt_n75(arg4), to_candid_opt_n8(arg5));
+        const result = await this.actor.updateMatter(arg0, to_candid_opt_n8(arg1), to_candid_opt_n8(arg2), to_candid_opt_n20(arg3), to_candid_opt_n110(arg4), to_candid_opt_n8(arg5));
         return from_candid_Result_n1(result);
     }
     async whoAmI(): Promise<Principal> {
@@ -554,101 +853,163 @@ export class Backend implements backendInterface {
         return result;
     }
 }
-function from_candid_AuditEntry_n57(value: _AuditEntry): AuditEntry {
-    return from_candid_record_n58(value);
+function from_candid_AuditEntry_n93(value: _AuditEntry): AuditEntry {
+    return from_candid_record_n94(value);
 }
-function from_candid_AuditOutcome_n59(value: _AuditOutcome): AuditOutcome {
+function from_candid_AuditOutcome_n95(value: _AuditOutcome): AuditOutcome {
     return from_candid_variant_n2(value);
 }
-function from_candid_ClientStatus_n22(value: _ClientStatus): ClientStatus {
-    return from_candid_variant_n23(value);
+function from_candid_ClientStatus_n29(value: _ClientStatus): ClientStatus {
+    return from_candid_variant_n30(value);
 }
-function from_candid_ClientType_n24(value: _ClientType): ClientType {
-    return from_candid_variant_n25(value);
+function from_candid_ClientType_n31(value: _ClientType): ClientType {
+    return from_candid_variant_n32(value);
 }
-function from_candid_Client_n20(value: _Client): Client {
-    return from_candid_record_n21(value);
+function from_candid_Client_n27(value: _Client): Client {
+    return from_candid_record_n28(value);
 }
-function from_candid_DocumentSearchResult_n69(value: _DocumentSearchResult): DocumentSearchResult {
-    return from_candid_record_n70(value);
+function from_candid_DocumentSearchResult_n105(value: _DocumentSearchResult): DocumentSearchResult {
+    return from_candid_record_n106(value);
 }
-function from_candid_DocumentStatus_n30(value: _DocumentStatus): DocumentStatus {
-    return from_candid_variant_n31(value);
+function from_candid_DocumentStatus_n37(value: _DocumentStatus): DocumentStatus {
+    return from_candid_variant_n38(value);
 }
-function from_candid_Document_n28(value: _Document): Document {
-    return from_candid_record_n29(value);
+function from_candid_Document_n35(value: _Document): Document {
+    return from_candid_record_n36(value);
 }
 function from_candid_ExportManifest_n13(value: _ExportManifest): ExportManifest {
     return from_candid_record_n14(value);
 }
-function from_candid_MatterStatus_n36(value: _MatterStatus): MatterStatus {
-    return from_candid_variant_n37(value);
+function from_candid_FolderListing_n65(value: _FolderListing): FolderListing {
+    return from_candid_record_n66(value);
 }
-function from_candid_Matter_n34(value: _Matter): Matter {
-    return from_candid_record_n35(value);
+function from_candid_Folder_n16(value: _Folder): Folder {
+    return from_candid_record_n17(value);
+}
+function from_candid_LibraryItemSearchResult_n68(value: _LibraryItemSearchResult): LibraryItemSearchResult {
+    return from_candid_record_n69(value);
+}
+function from_candid_LibraryItemStatus_n44(value: _LibraryItemStatus): LibraryItemStatus {
+    return from_candid_variant_n45(value);
+}
+function from_candid_LibraryItem_n42(value: _LibraryItem): LibraryItem {
+    return from_candid_record_n43(value);
+}
+function from_candid_MatterStatus_n50(value: _MatterStatus): MatterStatus {
+    return from_candid_variant_n51(value);
+}
+function from_candid_Matter_n48(value: _Matter): Matter {
+    return from_candid_record_n49(value);
 }
 function from_candid_Result_1_n9(value: _Result_1): Result_1 {
     return from_candid_variant_n10(value);
 }
-function from_candid_Result_2_n54(value: _Result_2): Result_2 {
-    return from_candid_variant_n55(value);
+function from_candid_Result_2_n90(value: _Result_2): Result_2 {
+    return from_candid_variant_n91(value);
 }
-function from_candid_Result_3_n52(value: _Result_3): Result_3 {
-    return from_candid_variant_n53(value);
+function from_candid_Result_3_n88(value: _Result_3): Result_3 {
+    return from_candid_variant_n89(value);
 }
-function from_candid_Result_4_n16(value: _Result_4): Result_4 {
-    return from_candid_variant_n17(value);
+function from_candid_Result_4_n86(value: _Result_4): Result_4 {
+    return from_candid_variant_n87(value);
 }
-function from_candid_Result_5_n11(value: _Result_5): Result_5 {
+function from_candid_Result_5_n23(value: _Result_5): Result_5 {
+    return from_candid_variant_n24(value);
+}
+function from_candid_Result_6_n21(value: _Result_6): Result_6 {
+    return from_candid_variant_n22(value);
+}
+function from_candid_Result_7_n11(value: _Result_7): Result_7 {
     return from_candid_variant_n12(value);
 }
 function from_candid_Result_n1(value: _Result): Result {
     return from_candid_variant_n2(value);
 }
-function from_candid_Role_n40(value: _Role): Role {
-    return from_candid_variant_n41(value);
+function from_candid_Role_n54(value: _Role): Role {
+    return from_candid_variant_n55(value);
 }
-function from_candid_UserRecord_n50(value: _UserRecord): UserRecord {
-    return from_candid_record_n51(value);
+function from_candid_TopUpRequestRecord_n57(value: _TopUpRequestRecord): TopUpRequestRecord {
+    return from_candid_record_n58(value);
 }
-function from_candid_opt_n15(value: [] | [Principal]): Principal | null {
+function from_candid_TopUpRequestStatus_n59(value: _TopUpRequestStatus): TopUpRequestStatus {
+    return from_candid_variant_n60(value);
+}
+function from_candid_UserRecord_n84(value: _UserRecord): UserRecord {
+    return from_candid_record_n85(value);
+}
+function from_candid_opt_n18(value: [] | [bigint]): bigint | null {
     return value.length === 0 ? null : value[0];
 }
-function from_candid_opt_n18(value: [] | [Uint8Array]): Uint8Array | null {
+function from_candid_opt_n19(value: [] | [Principal]): Principal | null {
     return value.length === 0 ? null : value[0];
 }
-function from_candid_opt_n19(value: [] | [_Client]): Client | null {
-    return value.length === 0 ? null : from_candid_Client_n20(value[0]);
-}
-function from_candid_opt_n26(value: [] | [string]): string | null {
+function from_candid_opt_n25(value: [] | [Uint8Array]): Uint8Array | null {
     return value.length === 0 ? null : value[0];
 }
-function from_candid_opt_n27(value: [] | [_Document]): Document | null {
-    return value.length === 0 ? null : from_candid_Document_n28(value[0]);
+function from_candid_opt_n26(value: [] | [_Client]): Client | null {
+    return value.length === 0 ? null : from_candid_Client_n27(value[0]);
 }
-function from_candid_opt_n32(value: [] | [_DocumentVersion]): DocumentVersion | null {
+function from_candid_opt_n33(value: [] | [string]): string | null {
     return value.length === 0 ? null : value[0];
 }
-function from_candid_opt_n33(value: [] | [_Matter]): Matter | null {
-    return value.length === 0 ? null : from_candid_Matter_n34(value[0]);
+function from_candid_opt_n34(value: [] | [_Document]): Document | null {
+    return value.length === 0 ? null : from_candid_Document_n35(value[0]);
 }
-function from_candid_opt_n38(value: [] | [_Time]): Time | null {
+function from_candid_opt_n39(value: [] | [_DocumentVersion]): DocumentVersion | null {
     return value.length === 0 ? null : value[0];
 }
-function from_candid_opt_n39(value: [] | [_Role]): Role | null {
-    return value.length === 0 ? null : from_candid_Role_n40(value[0]);
+function from_candid_opt_n40(value: [] | [_Folder]): Folder | null {
+    return value.length === 0 ? null : from_candid_Folder_n16(value[0]);
+}
+function from_candid_opt_n41(value: [] | [_LibraryItem]): LibraryItem | null {
+    return value.length === 0 ? null : from_candid_LibraryItem_n42(value[0]);
+}
+function from_candid_opt_n46(value: [] | [_LibraryVersion]): LibraryVersion | null {
+    return value.length === 0 ? null : value[0];
+}
+function from_candid_opt_n47(value: [] | [_Matter]): Matter | null {
+    return value.length === 0 ? null : from_candid_Matter_n48(value[0]);
+}
+function from_candid_opt_n52(value: [] | [_Time]): Time | null {
+    return value.length === 0 ? null : value[0];
+}
+function from_candid_opt_n53(value: [] | [_Role]): Role | null {
+    return value.length === 0 ? null : from_candid_Role_n54(value[0]);
+}
+function from_candid_opt_n56(value: [] | [_TopUpRequestRecord]): TopUpRequestRecord | null {
+    return value.length === 0 ? null : from_candid_TopUpRequestRecord_n57(value[0]);
+}
+function from_candid_record_n106(value: {
+    currentVersion: _DocumentVersion;
+    document: _Document;
+}): {
+    currentVersion: DocumentVersion;
+    document: Document;
+} {
+    return {
+        currentVersion: value.currentVersion,
+        document: from_candid_Document_n35(value.document)
+    };
 }
 function from_candid_record_n14(value: {
+    libraryItems: Array<{
+        itemId: bigint;
+        versionIds: Array<bigint>;
+    }>;
     totalVersions: bigint;
+    totalFolders: bigint;
     documents: Array<{
         versionIds: Array<bigint>;
         documentId: bigint;
     }>;
     matterIds: Array<bigint>;
+    totalLibraryItems: bigint;
     totalMatters: bigint;
     generatedAt: _Time;
     generatedBy: Principal;
     userPrincipals: Array<Principal>;
+    folders: Array<_Folder>;
+    totalLibraryVersions: bigint;
     storageUsedBytes: bigint;
     masterController: Principal;
     totalClients: bigint;
@@ -658,16 +1019,24 @@ function from_candid_record_n14(value: {
     operationsPrincipal: [] | [Principal];
     totalDocuments: bigint;
 }): {
+    libraryItems: Array<{
+        itemId: bigint;
+        versionIds: Array<bigint>;
+    }>;
     totalVersions: bigint;
+    totalFolders: bigint;
     documents: Array<{
         versionIds: Array<bigint>;
         documentId: bigint;
     }>;
     matterIds: Array<bigint>;
+    totalLibraryItems: bigint;
     totalMatters: bigint;
     generatedAt: Time;
     generatedBy: Principal;
     userPrincipals: Array<Principal>;
+    folders: Array<Folder>;
+    totalLibraryVersions: bigint;
     storageUsedBytes: bigint;
     masterController: Principal;
     totalClients: bigint;
@@ -678,24 +1047,50 @@ function from_candid_record_n14(value: {
     totalDocuments: bigint;
 } {
     return {
+        libraryItems: value.libraryItems,
         totalVersions: value.totalVersions,
+        totalFolders: value.totalFolders,
         documents: value.documents,
         matterIds: value.matterIds,
+        totalLibraryItems: value.totalLibraryItems,
         totalMatters: value.totalMatters,
         generatedAt: value.generatedAt,
         generatedBy: value.generatedBy,
         userPrincipals: value.userPrincipals,
+        folders: from_candid_vec_n15(value.folders),
+        totalLibraryVersions: value.totalLibraryVersions,
         storageUsedBytes: value.storageUsedBytes,
         masterController: value.masterController,
         totalClients: value.totalClients,
         storageBudgetBytes: value.storageBudgetBytes,
         clientIds: value.clientIds,
         totalAuditEntries: value.totalAuditEntries,
-        operationsPrincipal: record_opt_to_undefined(from_candid_opt_n15(value.operationsPrincipal)),
+        operationsPrincipal: record_opt_to_undefined(from_candid_opt_n19(value.operationsPrincipal)),
         totalDocuments: value.totalDocuments
     };
 }
-function from_candid_record_n21(value: {
+function from_candid_record_n17(value: {
+    id: bigint;
+    name: string;
+    createdAt: _Time;
+    createdBy: Principal;
+    parentId: [] | [bigint];
+}): {
+    id: bigint;
+    name: string;
+    createdAt: Time;
+    createdBy: Principal;
+    parentId?: bigint;
+} {
+    return {
+        id: value.id,
+        name: value.name,
+        createdAt: value.createdAt,
+        createdBy: value.createdBy,
+        parentId: record_opt_to_undefined(from_candid_opt_n18(value.parentId))
+    };
+}
+function from_candid_record_n28(value: {
     id: bigint;
     status: _ClientStatus;
     clientType: _ClientType;
@@ -724,20 +1119,20 @@ function from_candid_record_n21(value: {
 } {
     return {
         id: value.id,
-        status: from_candid_ClientStatus_n22(value.status),
-        clientType: from_candid_ClientType_n24(value.clientType),
+        status: from_candid_ClientStatus_n29(value.status),
+        clientType: from_candid_ClientType_n31(value.clientType),
         name: value.name,
         createdAt: value.createdAt,
         createdBy: value.createdBy,
-        primaryEmail: record_opt_to_undefined(from_candid_opt_n26(value.primaryEmail)),
+        primaryEmail: record_opt_to_undefined(from_candid_opt_n33(value.primaryEmail)),
         notes: value.notes,
         lastModifiedAt: value.lastModifiedAt,
         lastModifiedBy: value.lastModifiedBy,
-        primaryPhone: record_opt_to_undefined(from_candid_opt_n26(value.primaryPhone)),
-        identifier: record_opt_to_undefined(from_candid_opt_n26(value.identifier))
+        primaryPhone: record_opt_to_undefined(from_candid_opt_n33(value.primaryPhone)),
+        identifier: record_opt_to_undefined(from_candid_opt_n33(value.identifier))
     };
 }
-function from_candid_record_n29(value: {
+function from_candid_record_n36(value: {
     id: bigint;
     status: _DocumentStatus;
     createdAt: _Time;
@@ -754,14 +1149,47 @@ function from_candid_record_n29(value: {
 } {
     return {
         id: value.id,
-        status: from_candid_DocumentStatus_n30(value.status),
+        status: from_candid_DocumentStatus_n37(value.status),
         createdAt: value.createdAt,
         createdBy: value.createdBy,
         matterId: value.matterId,
         currentVersionId: value.currentVersionId
     };
 }
-function from_candid_record_n35(value: {
+function from_candid_record_n43(value: {
+    id: bigint;
+    status: _LibraryItemStatus;
+    name: string;
+    createdAt: _Time;
+    createdBy: Principal;
+    tags: Array<string>;
+    description: string;
+    folderId: [] | [bigint];
+    currentVersionId: bigint;
+}): {
+    id: bigint;
+    status: LibraryItemStatus;
+    name: string;
+    createdAt: Time;
+    createdBy: Principal;
+    tags: Array<string>;
+    description: string;
+    folderId?: bigint;
+    currentVersionId: bigint;
+} {
+    return {
+        id: value.id,
+        status: from_candid_LibraryItemStatus_n44(value.status),
+        name: value.name,
+        createdAt: value.createdAt,
+        createdBy: value.createdBy,
+        tags: value.tags,
+        description: value.description,
+        folderId: record_opt_to_undefined(from_candid_opt_n18(value.folderId)),
+        currentVersionId: value.currentVersionId
+    };
+}
+function from_candid_record_n49(value: {
     id: bigint;
     status: _MatterStatus;
     title: string;
@@ -792,21 +1220,81 @@ function from_candid_record_n35(value: {
 } {
     return {
         id: value.id,
-        status: from_candid_MatterStatus_n36(value.status),
+        status: from_candid_MatterStatus_n50(value.status),
         title: value.title,
         clientId: value.clientId,
         createdAt: value.createdAt,
         createdBy: value.createdBy,
         description: value.description,
-        closedAt: record_opt_to_undefined(from_candid_opt_n38(value.closedAt)),
+        closedAt: record_opt_to_undefined(from_candid_opt_n52(value.closedAt)),
         lastModifiedAt: value.lastModifiedAt,
         lastModifiedBy: value.lastModifiedBy,
         matterType: value.matterType,
-        assignedPartner: record_opt_to_undefined(from_candid_opt_n15(value.assignedPartner)),
+        assignedPartner: record_opt_to_undefined(from_candid_opt_n19(value.assignedPartner)),
         openedAt: value.openedAt
     };
 }
-function from_candid_record_n51(value: {
+function from_candid_record_n58(value: {
+    id: bigint;
+    status: _TopUpRequestStatus;
+    note: string;
+    createdAt: _Time;
+    createdBy: Principal;
+    requestedTrillionCycles: bigint;
+    cancelledAt: [] | [_Time];
+    cancelledBy: [] | [Principal];
+    fulfilledAt: [] | [_Time];
+    fulfilledBy: [] | [Principal];
+}): {
+    id: bigint;
+    status: TopUpRequestStatus;
+    note: string;
+    createdAt: Time;
+    createdBy: Principal;
+    requestedTrillionCycles: bigint;
+    cancelledAt?: Time;
+    cancelledBy?: Principal;
+    fulfilledAt?: Time;
+    fulfilledBy?: Principal;
+} {
+    return {
+        id: value.id,
+        status: from_candid_TopUpRequestStatus_n59(value.status),
+        note: value.note,
+        createdAt: value.createdAt,
+        createdBy: value.createdBy,
+        requestedTrillionCycles: value.requestedTrillionCycles,
+        cancelledAt: record_opt_to_undefined(from_candid_opt_n52(value.cancelledAt)),
+        cancelledBy: record_opt_to_undefined(from_candid_opt_n19(value.cancelledBy)),
+        fulfilledAt: record_opt_to_undefined(from_candid_opt_n52(value.fulfilledAt)),
+        fulfilledBy: record_opt_to_undefined(from_candid_opt_n19(value.fulfilledBy))
+    };
+}
+function from_candid_record_n66(value: {
+    folders: Array<_Folder>;
+    items: Array<_LibraryItemSearchResult>;
+}): {
+    folders: Array<Folder>;
+    items: Array<LibraryItemSearchResult>;
+} {
+    return {
+        folders: from_candid_vec_n15(value.folders),
+        items: from_candid_vec_n67(value.items)
+    };
+}
+function from_candid_record_n69(value: {
+    item: _LibraryItem;
+    currentVersion: _LibraryVersion;
+}): {
+    item: LibraryItem;
+    currentVersion: LibraryVersion;
+} {
+    return {
+        item: from_candid_LibraryItem_n42(value.item),
+        currentVersion: value.currentVersion
+    };
+}
+function from_candid_record_n85(value: {
     role: _Role;
     addedAt: _Time;
     addedBy: Principal;
@@ -818,13 +1306,13 @@ function from_candid_record_n51(value: {
     suspended: boolean;
 } {
     return {
-        role: from_candid_Role_n40(value.role),
+        role: from_candid_Role_n54(value.role),
         addedAt: value.addedAt,
         addedBy: value.addedBy,
         suspended: value.suspended
     };
 }
-function from_candid_record_n58(value: {
+function from_candid_record_n94(value: {
     id: bigint;
     action: string;
     target: [] | [Principal];
@@ -842,28 +1330,16 @@ function from_candid_record_n58(value: {
     return {
         id: value.id,
         action: value.action,
-        target: record_opt_to_undefined(from_candid_opt_n15(value.target)),
+        target: record_opt_to_undefined(from_candid_opt_n19(value.target)),
         timestamp: value.timestamp,
         caller: value.caller,
-        outcome: from_candid_AuditOutcome_n59(value.outcome)
+        outcome: from_candid_AuditOutcome_n95(value.outcome)
     };
 }
-function from_candid_record_n70(value: {
-    currentVersion: _DocumentVersion;
-    document: _Document;
-}): {
-    currentVersion: DocumentVersion;
-    document: Document;
-} {
-    return {
-        currentVersion: value.currentVersion,
-        document: from_candid_Document_n28(value.document)
-    };
-}
-function from_candid_tuple_n49(value: [Principal, _UserRecord]): [Principal, UserRecord] {
+function from_candid_tuple_n83(value: [Principal, _UserRecord]): [Principal, UserRecord] {
     return [
         value[0],
-        from_candid_UserRecord_n50(value[1])
+        from_candid_UserRecord_n84(value[1])
     ];
 }
 function from_candid_variant_n10(value: {
@@ -904,33 +1380,6 @@ function from_candid_variant_n12(value: {
         err: value.err
     } : value;
 }
-function from_candid_variant_n17(value: {
-    ok: {
-        versionId: bigint;
-        sha256: Uint8Array;
-        documentId: bigint;
-    };
-} | {
-    err: string;
-}): {
-    __kind__: "ok";
-    ok: {
-        versionId: bigint;
-        sha256: Uint8Array;
-        documentId: bigint;
-    };
-} | {
-    __kind__: "err";
-    err: string;
-} {
-    return "ok" in value ? {
-        __kind__: "ok",
-        ok: value.ok
-    } : "err" in value ? {
-        __kind__: "err",
-        err: value.err
-    } : value;
-}
 function from_candid_variant_n2(value: {
     ok: null;
 } | {
@@ -950,14 +1399,68 @@ function from_candid_variant_n2(value: {
         err: value.err
     } : value;
 }
-function from_candid_variant_n23(value: {
+function from_candid_variant_n22(value: {
+    ok: {
+        itemId: bigint;
+        versionId: bigint;
+        sha256: Uint8Array;
+    };
+} | {
+    err: string;
+}): {
+    __kind__: "ok";
+    ok: {
+        itemId: bigint;
+        versionId: bigint;
+        sha256: Uint8Array;
+    };
+} | {
+    __kind__: "err";
+    err: string;
+} {
+    return "ok" in value ? {
+        __kind__: "ok",
+        ok: value.ok
+    } : "err" in value ? {
+        __kind__: "err",
+        err: value.err
+    } : value;
+}
+function from_candid_variant_n24(value: {
+    ok: {
+        versionId: bigint;
+        sha256: Uint8Array;
+        documentId: bigint;
+    };
+} | {
+    err: string;
+}): {
+    __kind__: "ok";
+    ok: {
+        versionId: bigint;
+        sha256: Uint8Array;
+        documentId: bigint;
+    };
+} | {
+    __kind__: "err";
+    err: string;
+} {
+    return "ok" in value ? {
+        __kind__: "ok",
+        ok: value.ok
+    } : "err" in value ? {
+        __kind__: "err",
+        err: value.err
+    } : value;
+}
+function from_candid_variant_n30(value: {
     Inactive: null;
 } | {
     Active: null;
 }): ClientStatus {
     return "Inactive" in value ? ClientStatus.Inactive : "Active" in value ? ClientStatus.Active : value;
 }
-function from_candid_variant_n25(value: {
+function from_candid_variant_n32(value: {
     Company: null;
 } | {
     Individual: null;
@@ -966,14 +1469,23 @@ function from_candid_variant_n25(value: {
 }): ClientType {
     return "Company" in value ? ClientType.Company : "Individual" in value ? ClientType.Individual : "Other" in value ? ClientType.Other : value;
 }
-function from_candid_variant_n31(value: {
+function from_candid_variant_n38(value: {
     Active: null;
 } | {
     Deleted: null;
 }): DocumentStatus {
     return "Active" in value ? DocumentStatus.Active : "Deleted" in value ? DocumentStatus.Deleted : value;
 }
-function from_candid_variant_n37(value: {
+function from_candid_variant_n45(value: {
+    Active: null;
+} | {
+    Archived: null;
+} | {
+    Deleted: null;
+}): LibraryItemStatus {
+    return "Active" in value ? LibraryItemStatus.Active : "Archived" in value ? LibraryItemStatus.Archived : "Deleted" in value ? LibraryItemStatus.Deleted : value;
+}
+function from_candid_variant_n51(value: {
     OnHold: null;
 } | {
     Open: null;
@@ -984,7 +1496,7 @@ function from_candid_variant_n37(value: {
 }): MatterStatus {
     return "OnHold" in value ? MatterStatus.OnHold : "Open" in value ? MatterStatus.Open : "Closed" in value ? MatterStatus.Closed : "Archived" in value ? MatterStatus.Archived : value;
 }
-function from_candid_variant_n41(value: {
+function from_candid_variant_n55(value: {
     Staff: null;
 } | {
     Associate: null;
@@ -993,7 +1505,16 @@ function from_candid_variant_n41(value: {
 }): Role {
     return "Staff" in value ? Role.Staff : "Associate" in value ? Role.Associate : "Partner" in value ? Role.Partner : value;
 }
-function from_candid_variant_n53(value: {
+function from_candid_variant_n60(value: {
+    Cancelled: null;
+} | {
+    Fulfilled: null;
+} | {
+    Pending: null;
+}): TopUpRequestStatus {
+    return "Cancelled" in value ? TopUpRequestStatus.Cancelled : "Fulfilled" in value ? TopUpRequestStatus.Fulfilled : "Pending" in value ? TopUpRequestStatus.Pending : value;
+}
+function from_candid_variant_n87(value: {
     ok: {
         sha256: Uint8Array;
         contentType: string;
@@ -1026,7 +1547,42 @@ function from_candid_variant_n53(value: {
         err: value.err
     } : value;
 }
-function from_candid_variant_n55(value: {
+function from_candid_variant_n89(value: {
+    ok: {
+        itemId: bigint;
+        versionId: bigint;
+        sha256: Uint8Array;
+        contentType: string;
+        filename: string;
+        chunkCount: bigint;
+        sizeBytes: bigint;
+    };
+} | {
+    err: string;
+}): {
+    __kind__: "ok";
+    ok: {
+        itemId: bigint;
+        versionId: bigint;
+        sha256: Uint8Array;
+        contentType: string;
+        filename: string;
+        chunkCount: bigint;
+        sizeBytes: bigint;
+    };
+} | {
+    __kind__: "err";
+    err: string;
+} {
+    return "ok" in value ? {
+        __kind__: "ok",
+        ok: value.ok
+    } : "err" in value ? {
+        __kind__: "err",
+        err: value.err
+    } : value;
+}
+function from_candid_variant_n91(value: {
     ok: Array<_AuditEntry>;
 } | {
     err: string;
@@ -1039,97 +1595,97 @@ function from_candid_variant_n55(value: {
 } {
     return "ok" in value ? {
         __kind__: "ok",
-        ok: from_candid_vec_n56(value.ok)
+        ok: from_candid_vec_n92(value.ok)
     } : "err" in value ? {
         __kind__: "err",
         err: value.err
     } : value;
 }
-function from_candid_vec_n42(value: Array<_Client>): Array<Client> {
-    return value.map((x)=>from_candid_Client_n20(x));
+function from_candid_vec_n104(value: Array<_DocumentSearchResult>): Array<DocumentSearchResult> {
+    return value.map((x)=>from_candid_DocumentSearchResult_n105(x));
 }
-function from_candid_vec_n43(value: Array<_Document>): Array<Document> {
-    return value.map((x)=>from_candid_Document_n28(x));
+function from_candid_vec_n15(value: Array<_Folder>): Array<Folder> {
+    return value.map((x)=>from_candid_Folder_n16(x));
 }
-function from_candid_vec_n47(value: Array<_Matter>): Array<Matter> {
-    return value.map((x)=>from_candid_Matter_n34(x));
+function from_candid_vec_n61(value: Array<_Client>): Array<Client> {
+    return value.map((x)=>from_candid_Client_n27(x));
 }
-function from_candid_vec_n48(value: Array<[Principal, _UserRecord]>): Array<[Principal, UserRecord]> {
-    return value.map((x)=>from_candid_tuple_n49(x));
+function from_candid_vec_n62(value: Array<_Document>): Array<Document> {
+    return value.map((x)=>from_candid_Document_n35(x));
 }
-function from_candid_vec_n56(value: Array<_AuditEntry>): Array<AuditEntry> {
-    return value.map((x)=>from_candid_AuditEntry_n57(x));
+function from_candid_vec_n67(value: Array<_LibraryItemSearchResult>): Array<LibraryItemSearchResult> {
+    return value.map((x)=>from_candid_LibraryItemSearchResult_n68(x));
 }
-function from_candid_vec_n68(value: Array<_DocumentSearchResult>): Array<DocumentSearchResult> {
-    return value.map((x)=>from_candid_DocumentSearchResult_n69(x));
+function from_candid_vec_n77(value: Array<_Matter>): Array<Matter> {
+    return value.map((x)=>from_candid_Matter_n48(x));
 }
-function to_candid_ClientFilter_n60(value: ClientFilter): _ClientFilter {
-    return to_candid_record_n61(value);
+function from_candid_vec_n81(value: Array<_TopUpRequestRecord>): Array<TopUpRequestRecord> {
+    return value.map((x)=>from_candid_TopUpRequestRecord_n57(x));
 }
-function to_candid_ClientStatus_n62(value: ClientStatus): _ClientStatus {
-    return to_candid_variant_n63(value);
+function from_candid_vec_n82(value: Array<[Principal, _UserRecord]>): Array<[Principal, UserRecord]> {
+    return value.map((x)=>from_candid_tuple_n83(x));
+}
+function from_candid_vec_n92(value: Array<_AuditEntry>): Array<AuditEntry> {
+    return value.map((x)=>from_candid_AuditEntry_n93(x));
+}
+function to_candid_ClientFilter_n96(value: ClientFilter): _ClientFilter {
+    return to_candid_record_n97(value);
+}
+function to_candid_ClientStatus_n98(value: ClientStatus): _ClientStatus {
+    return to_candid_variant_n99(value);
 }
 function to_candid_ClientType_n6(value: ClientType): _ClientType {
     return to_candid_variant_n7(value);
 }
-function to_candid_DocumentFilter_n64(value: DocumentFilter): _DocumentFilter {
-    return to_candid_record_n65(value);
+function to_candid_DocumentFilter_n100(value: DocumentFilter): _DocumentFilter {
+    return to_candid_record_n101(value);
 }
-function to_candid_DocumentStatus_n66(value: DocumentStatus): _DocumentStatus {
-    return to_candid_variant_n67(value);
+function to_candid_DocumentStatus_n102(value: DocumentStatus): _DocumentStatus {
+    return to_candid_variant_n103(value);
 }
-function to_candid_MatterFilter_n71(value: MatterFilter): _MatterFilter {
-    return to_candid_record_n72(value);
+function to_candid_FolderScope_n63(value: FolderScope): _FolderScope {
+    return to_candid_variant_n64(value);
 }
-function to_candid_MatterStatus_n45(value: MatterStatus): _MatterStatus {
-    return to_candid_variant_n46(value);
+function to_candid_LibraryFilter_n70(value: LibraryFilter): _LibraryFilter {
+    return to_candid_record_n71(value);
+}
+function to_candid_LibraryItemStatus_n72(value: LibraryItemStatus): _LibraryItemStatus {
+    return to_candid_variant_n73(value);
+}
+function to_candid_MatterFilter_n107(value: MatterFilter): _MatterFilter {
+    return to_candid_record_n108(value);
+}
+function to_candid_MatterStatus_n75(value: MatterStatus): _MatterStatus {
+    return to_candid_variant_n76(value);
 }
 function to_candid_Role_n3(value: Role): _Role {
     return to_candid_variant_n4(value);
 }
-function to_candid_opt_n44(value: MatterStatus | null): [] | [_MatterStatus] {
-    return value === null ? candid_none() : candid_some(to_candid_MatterStatus_n45(value));
+function to_candid_TopUpRequestStatus_n79(value: TopUpRequestStatus): _TopUpRequestStatus {
+    return to_candid_variant_n80(value);
+}
+function to_candid_opt_n109(value: ClientType | null): [] | [_ClientType] {
+    return value === null ? candid_none() : candid_some(to_candid_ClientType_n6(value));
+}
+function to_candid_opt_n110(value: Some<Principal | null> | None): [] | [[] | [Principal]] {
+    return isNone(value) ? candid_none() : candid_some(to_candid_opt_n5(unwrap(value)));
+}
+function to_candid_opt_n20(value: bigint | null): [] | [bigint] {
+    return value === null ? candid_none() : candid_some(value);
 }
 function to_candid_opt_n5(value: Principal | null): [] | [Principal] {
     return value === null ? candid_none() : candid_some(value);
 }
-function to_candid_opt_n73(value: bigint | null): [] | [bigint] {
-    return value === null ? candid_none() : candid_some(value);
+function to_candid_opt_n74(value: MatterStatus | null): [] | [_MatterStatus] {
+    return value === null ? candid_none() : candid_some(to_candid_MatterStatus_n75(value));
 }
-function to_candid_opt_n74(value: ClientType | null): [] | [_ClientType] {
-    return value === null ? candid_none() : candid_some(to_candid_ClientType_n6(value));
-}
-function to_candid_opt_n75(value: Some<Principal | null> | None): [] | [[] | [Principal]] {
-    return isNone(value) ? candid_none() : candid_some(to_candid_opt_n5(unwrap(value)));
+function to_candid_opt_n78(value: TopUpRequestStatus | null): [] | [_TopUpRequestStatus] {
+    return value === null ? candid_none() : candid_some(to_candid_TopUpRequestStatus_n79(value));
 }
 function to_candid_opt_n8(value: string | null): [] | [string] {
     return value === null ? candid_none() : candid_some(value);
 }
-function to_candid_record_n61(value: {
-    createdBefore?: Time;
-    nameContains?: string;
-    clientType?: ClientType;
-    createdAfter?: Time;
-    statusFilter?: ClientStatus;
-    identifierContains?: string;
-}): {
-    createdBefore: [] | [_Time];
-    nameContains: [] | [string];
-    clientType: [] | [_ClientType];
-    createdAfter: [] | [_Time];
-    statusFilter: [] | [_ClientStatus];
-    identifierContains: [] | [string];
-} {
-    return {
-        createdBefore: value.createdBefore ? candid_some(value.createdBefore) : candid_none(),
-        nameContains: value.nameContains ? candid_some(value.nameContains) : candid_none(),
-        clientType: value.clientType ? candid_some(to_candid_ClientType_n6(value.clientType)) : candid_none(),
-        createdAfter: value.createdAfter ? candid_some(value.createdAfter) : candid_none(),
-        statusFilter: value.statusFilter ? candid_some(to_candid_ClientStatus_n62(value.statusFilter)) : candid_none(),
-        identifierContains: value.identifierContains ? candid_some(value.identifierContains) : candid_none()
-    };
-}
-function to_candid_record_n65(value: {
+function to_candid_record_n101(value: {
     contentType?: string;
     filenameContains?: string;
     matterId?: bigint;
@@ -1151,12 +1707,12 @@ function to_candid_record_n65(value: {
         filenameContains: value.filenameContains ? candid_some(value.filenameContains) : candid_none(),
         matterId: value.matterId ? candid_some(value.matterId) : candid_none(),
         uploadedAfter: value.uploadedAfter ? candid_some(value.uploadedAfter) : candid_none(),
-        statusFilter: value.statusFilter ? candid_some(to_candid_DocumentStatus_n66(value.statusFilter)) : candid_none(),
+        statusFilter: value.statusFilter ? candid_some(to_candid_DocumentStatus_n102(value.statusFilter)) : candid_none(),
         uploadedBy: value.uploadedBy ? candid_some(value.uploadedBy) : candid_none(),
         uploadedBefore: value.uploadedBefore ? candid_some(value.uploadedBefore) : candid_none()
     };
 }
-function to_candid_record_n72(value: {
+function to_candid_record_n108(value: {
     openedBefore?: Time;
     clientId?: bigint;
     closedAfter?: Time;
@@ -1184,10 +1740,78 @@ function to_candid_record_n72(value: {
         titleContains: value.titleContains ? candid_some(value.titleContains) : candid_none(),
         closedBefore: value.closedBefore ? candid_some(value.closedBefore) : candid_none(),
         openedAfter: value.openedAfter ? candid_some(value.openedAfter) : candid_none(),
-        statusFilter: value.statusFilter ? candid_some(to_candid_MatterStatus_n45(value.statusFilter)) : candid_none(),
+        statusFilter: value.statusFilter ? candid_some(to_candid_MatterStatus_n75(value.statusFilter)) : candid_none(),
         matterTypeContains: value.matterTypeContains ? candid_some(value.matterTypeContains) : candid_none(),
         assignedPartner: value.assignedPartner ? candid_some(value.assignedPartner) : candid_none()
     };
+}
+function to_candid_record_n71(value: {
+    folderScope: FolderScope;
+    currentFilenameContains?: string;
+    contentType?: string;
+    nameContains?: string;
+    uploadedAfter?: Time;
+    tagsContainsAny?: Array<string>;
+    statusFilter?: LibraryItemStatus;
+    uploadedBy?: Principal;
+    uploadedBefore?: Time;
+}): {
+    folderScope: _FolderScope;
+    currentFilenameContains: [] | [string];
+    contentType: [] | [string];
+    nameContains: [] | [string];
+    uploadedAfter: [] | [_Time];
+    tagsContainsAny: [] | [Array<string>];
+    statusFilter: [] | [_LibraryItemStatus];
+    uploadedBy: [] | [Principal];
+    uploadedBefore: [] | [_Time];
+} {
+    return {
+        folderScope: to_candid_FolderScope_n63(value.folderScope),
+        currentFilenameContains: value.currentFilenameContains ? candid_some(value.currentFilenameContains) : candid_none(),
+        contentType: value.contentType ? candid_some(value.contentType) : candid_none(),
+        nameContains: value.nameContains ? candid_some(value.nameContains) : candid_none(),
+        uploadedAfter: value.uploadedAfter ? candid_some(value.uploadedAfter) : candid_none(),
+        tagsContainsAny: value.tagsContainsAny ? candid_some(value.tagsContainsAny) : candid_none(),
+        statusFilter: value.statusFilter ? candid_some(to_candid_LibraryItemStatus_n72(value.statusFilter)) : candid_none(),
+        uploadedBy: value.uploadedBy ? candid_some(value.uploadedBy) : candid_none(),
+        uploadedBefore: value.uploadedBefore ? candid_some(value.uploadedBefore) : candid_none()
+    };
+}
+function to_candid_record_n97(value: {
+    createdBefore?: Time;
+    nameContains?: string;
+    clientType?: ClientType;
+    createdAfter?: Time;
+    statusFilter?: ClientStatus;
+    identifierContains?: string;
+}): {
+    createdBefore: [] | [_Time];
+    nameContains: [] | [string];
+    clientType: [] | [_ClientType];
+    createdAfter: [] | [_Time];
+    statusFilter: [] | [_ClientStatus];
+    identifierContains: [] | [string];
+} {
+    return {
+        createdBefore: value.createdBefore ? candid_some(value.createdBefore) : candid_none(),
+        nameContains: value.nameContains ? candid_some(value.nameContains) : candid_none(),
+        clientType: value.clientType ? candid_some(to_candid_ClientType_n6(value.clientType)) : candid_none(),
+        createdAfter: value.createdAfter ? candid_some(value.createdAfter) : candid_none(),
+        statusFilter: value.statusFilter ? candid_some(to_candid_ClientStatus_n98(value.statusFilter)) : candid_none(),
+        identifierContains: value.identifierContains ? candid_some(value.identifierContains) : candid_none()
+    };
+}
+function to_candid_variant_n103(value: DocumentStatus): {
+    Active: null;
+} | {
+    Deleted: null;
+} {
+    return value == DocumentStatus.Active ? {
+        Active: null
+    } : value == DocumentStatus.Deleted ? {
+        Deleted: null
+    } : value;
 }
 function to_candid_variant_n4(value: Role): {
     Staff: null;
@@ -1204,7 +1828,68 @@ function to_candid_variant_n4(value: Role): {
         Partner: null
     } : value;
 }
-function to_candid_variant_n46(value: MatterStatus): {
+function to_candid_variant_n64(value: {
+    __kind__: "Any";
+    Any: null;
+} | {
+    __kind__: "Folder";
+    Folder: bigint;
+} | {
+    __kind__: "Root";
+    Root: null;
+} | {
+    __kind__: "Subtree";
+    Subtree: bigint;
+}): {
+    Any: null;
+} | {
+    Folder: bigint;
+} | {
+    Root: null;
+} | {
+    Subtree: bigint;
+} {
+    return value.__kind__ === "Any" ? {
+        Any: value.Any
+    } : value.__kind__ === "Folder" ? {
+        Folder: value.Folder
+    } : value.__kind__ === "Root" ? {
+        Root: value.Root
+    } : value.__kind__ === "Subtree" ? {
+        Subtree: value.Subtree
+    } : value;
+}
+function to_candid_variant_n7(value: ClientType): {
+    Company: null;
+} | {
+    Individual: null;
+} | {
+    Other: null;
+} {
+    return value == ClientType.Company ? {
+        Company: null
+    } : value == ClientType.Individual ? {
+        Individual: null
+    } : value == ClientType.Other ? {
+        Other: null
+    } : value;
+}
+function to_candid_variant_n73(value: LibraryItemStatus): {
+    Active: null;
+} | {
+    Archived: null;
+} | {
+    Deleted: null;
+} {
+    return value == LibraryItemStatus.Active ? {
+        Active: null
+    } : value == LibraryItemStatus.Archived ? {
+        Archived: null
+    } : value == LibraryItemStatus.Deleted ? {
+        Deleted: null
+    } : value;
+}
+function to_candid_variant_n76(value: MatterStatus): {
     OnHold: null;
 } | {
     Open: null;
@@ -1223,7 +1908,22 @@ function to_candid_variant_n46(value: MatterStatus): {
         Archived: null
     } : value;
 }
-function to_candid_variant_n63(value: ClientStatus): {
+function to_candid_variant_n80(value: TopUpRequestStatus): {
+    Cancelled: null;
+} | {
+    Fulfilled: null;
+} | {
+    Pending: null;
+} {
+    return value == TopUpRequestStatus.Cancelled ? {
+        Cancelled: null
+    } : value == TopUpRequestStatus.Fulfilled ? {
+        Fulfilled: null
+    } : value == TopUpRequestStatus.Pending ? {
+        Pending: null
+    } : value;
+}
+function to_candid_variant_n99(value: ClientStatus): {
     Inactive: null;
 } | {
     Active: null;
@@ -1232,32 +1932,6 @@ function to_candid_variant_n63(value: ClientStatus): {
         Inactive: null
     } : value == ClientStatus.Active ? {
         Active: null
-    } : value;
-}
-function to_candid_variant_n67(value: DocumentStatus): {
-    Active: null;
-} | {
-    Deleted: null;
-} {
-    return value == DocumentStatus.Active ? {
-        Active: null
-    } : value == DocumentStatus.Deleted ? {
-        Deleted: null
-    } : value;
-}
-function to_candid_variant_n7(value: ClientType): {
-    Company: null;
-} | {
-    Individual: null;
-} | {
-    Other: null;
-} {
-    return value == ClientType.Company ? {
-        Company: null
-    } : value == ClientType.Individual ? {
-        Individual: null
-    } : value == ClientType.Other ? {
-        Other: null
     } : value;
 }
 export interface CreateActorOptions {

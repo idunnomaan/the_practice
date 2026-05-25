@@ -86,13 +86,18 @@ export interface DocumentVersion {
   'uploadedBy' : Principal,
 }
 export interface ExportManifest {
+  'libraryItems' : Array<{ 'itemId' : bigint, 'versionIds' : Array<bigint> }>,
   'totalVersions' : bigint,
+  'totalFolders' : bigint,
   'documents' : Array<{ 'versionIds' : Array<bigint>, 'documentId' : bigint }>,
   'matterIds' : Array<bigint>,
+  'totalLibraryItems' : bigint,
   'totalMatters' : bigint,
   'generatedAt' : Time,
   'generatedBy' : Principal,
   'userPrincipals' : Array<Principal>,
+  'folders' : Array<Folder>,
+  'totalLibraryVersions' : bigint,
   'storageUsedBytes' : bigint,
   'masterController' : Principal,
   'totalClients' : bigint,
@@ -101,6 +106,63 @@ export interface ExportManifest {
   'totalAuditEntries' : bigint,
   'operationsPrincipal' : [] | [Principal],
   'totalDocuments' : bigint,
+}
+export interface Folder {
+  'id' : bigint,
+  'name' : string,
+  'createdAt' : Time,
+  'createdBy' : Principal,
+  'parentId' : [] | [bigint],
+}
+export interface FolderListing {
+  'folders' : Array<Folder>,
+  'items' : Array<LibraryItemSearchResult>,
+}
+export type FolderScope = { 'Any' : null } |
+  { 'Folder' : bigint } |
+  { 'Root' : null } |
+  { 'Subtree' : bigint };
+export interface LibraryFilter {
+  'folderScope' : FolderScope,
+  'currentFilenameContains' : [] | [string],
+  'contentType' : [] | [string],
+  'nameContains' : [] | [string],
+  'uploadedAfter' : [] | [Time],
+  'tagsContainsAny' : [] | [Array<string>],
+  'statusFilter' : [] | [LibraryItemStatus],
+  'uploadedBy' : [] | [Principal],
+  'uploadedBefore' : [] | [Time],
+}
+export interface LibraryItem {
+  'id' : bigint,
+  'status' : LibraryItemStatus,
+  'name' : string,
+  'createdAt' : Time,
+  'createdBy' : Principal,
+  'tags' : Array<string>,
+  'description' : string,
+  'folderId' : [] | [bigint],
+  'currentVersionId' : bigint,
+}
+export interface LibraryItemSearchResult {
+  'item' : LibraryItem,
+  'currentVersion' : LibraryVersion,
+}
+export type LibraryItemStatus = { 'Active' : null } |
+  { 'Archived' : null } |
+  { 'Deleted' : null };
+export interface LibraryVersion {
+  'itemId' : bigint,
+  'versionId' : bigint,
+  'sha256' : Uint8Array,
+  'contentType' : string,
+  'blob' : Uint8Array,
+  'filename' : string,
+  'sizeBytes' : bigint,
+  'uploadNotes' : string,
+  'versionNumber' : bigint,
+  'uploadedAt' : Time,
+  'uploadedBy' : Principal,
 }
 export interface Matter {
   'id' : bigint,
@@ -146,6 +208,18 @@ export type Result_2 = { 'ok' : Array<AuditEntry> } |
   { 'err' : string };
 export type Result_3 = {
     'ok' : {
+      'itemId' : bigint,
+      'versionId' : bigint,
+      'sha256' : Uint8Array,
+      'contentType' : string,
+      'filename' : string,
+      'chunkCount' : bigint,
+      'sizeBytes' : bigint,
+    }
+  } |
+  { 'err' : string };
+export type Result_4 = {
+    'ok' : {
       'sha256' : Uint8Array,
       'contentType' : string,
       'filename' : string,
@@ -155,7 +229,7 @@ export type Result_3 = {
     }
   } |
   { 'err' : string };
-export type Result_4 = {
+export type Result_5 = {
     'ok' : {
       'versionId' : bigint,
       'sha256' : Uint8Array,
@@ -163,38 +237,61 @@ export type Result_4 = {
     }
   } |
   { 'err' : string };
-export type Result_5 = { 'ok' : ExportManifest } |
+export type Result_6 = {
+    'ok' : { 'itemId' : bigint, 'versionId' : bigint, 'sha256' : Uint8Array }
+  } |
+  { 'err' : string };
+export type Result_7 = { 'ok' : ExportManifest } |
   { 'err' : string };
 export type Role = { 'Staff' : null } |
   { 'Associate' : null } |
   { 'Partner' : null };
 export interface ThePractice {
+  'abandonLibraryUpload' : ActorMethod<[bigint], Result>,
   'abandonUpload' : ActorMethod<[bigint], Result>,
+  'addLibraryItemTag' : ActorMethod<[bigint, string], Result>,
   'addUser' : ActorMethod<[Principal, Role], Result>,
   'appendChunk' : ActorMethod<[bigint, bigint, Uint8Array], Result>,
+  'appendLibraryChunk' : ActorMethod<[bigint, bigint, Uint8Array], Result>,
+  'archiveLibraryItem' : ActorMethod<[bigint], Result>,
   'archiveMatter' : ActorMethod<[bigint], Result>,
   'assignPartnerToMatter' : ActorMethod<[bigint, [] | [Principal]], Result>,
+  'cancelTopUpRequest' : ActorMethod<[bigint], Result>,
   'clientsByStatus' : ActorMethod<[], ClientStatusCounts>,
   'closeMatter' : ActorMethod<[bigint], Result>,
   'createClient' : ActorMethod<
     [string, ClientType, [] | [string], [] | [string], [] | [string], string],
     Result_1
   >,
-  'createExportManifest' : ActorMethod<[], Result_5>,
+  'createExportManifest' : ActorMethod<[], Result_7>,
+  'createFolder' : ActorMethod<[string, [] | [bigint]], Result_1>,
   'createMatter' : ActorMethod<
     [string, string, bigint, [] | [Principal], string],
     Result_1
   >,
+  'createTopUpRequest' : ActorMethod<[bigint, string], Result_1>,
   'deactivateClient' : ActorMethod<[bigint], Result>,
   'deleteDocument' : ActorMethod<[bigint], Result>,
+  'deleteFolder' : ActorMethod<[bigint], Result>,
+  'deleteLibraryItem' : ActorMethod<[bigint], Result>,
   'documentsByStatus' : ActorMethod<[], DocumentStatusCounts>,
-  'finalizeUpload' : ActorMethod<[bigint], Result_4>,
+  'finalizeLibraryUpload' : ActorMethod<[bigint], Result_6>,
+  'finalizeUpload' : ActorMethod<[bigint], Result_5>,
+  'fulfillTopUpRequest' : ActorMethod<[bigint], Result>,
   'getChunk' : ActorMethod<[bigint, bigint], [] | [Uint8Array]>,
   'getClient' : ActorMethod<[bigint], [] | [Client]>,
   'getClientCount' : ActorMethod<[], bigint>,
+  'getCycleBalance' : ActorMethod<[], bigint>,
   'getDocument' : ActorMethod<[bigint], [] | [Document]>,
   'getDocumentCount' : ActorMethod<[], bigint>,
   'getDocumentVersion' : ActorMethod<[bigint], [] | [DocumentVersion]>,
+  'getFolder' : ActorMethod<[bigint], [] | [Folder]>,
+  'getFolderCount' : ActorMethod<[], bigint>,
+  'getFolderDepth' : ActorMethod<[bigint], [] | [bigint]>,
+  'getLibraryChunk' : ActorMethod<[bigint, bigint], [] | [Uint8Array]>,
+  'getLibraryItem' : ActorMethod<[bigint], [] | [LibraryItem]>,
+  'getLibraryItemCount' : ActorMethod<[], bigint>,
+  'getLibraryVersion' : ActorMethod<[bigint], [] | [LibraryVersion]>,
   'getMasterController' : ActorMethod<[], Principal>,
   'getMatter' : ActorMethod<[bigint], [] | [Matter]>,
   'getMatterCount' : ActorMethod<[], bigint>,
@@ -202,13 +299,21 @@ export interface ThePractice {
   'getOperationsPrincipal' : ActorMethod<[], [] | [Principal]>,
   'getStorageBudget' : ActorMethod<[], bigint>,
   'getStorageUsed' : ActorMethod<[], bigint>,
+  'getTopUpRequest' : ActorMethod<[bigint], [] | [TopUpRequestRecord]>,
   'getUserCount' : ActorMethod<[], bigint>,
   'grantOperations' : ActorMethod<[Principal], Result>,
+  'listAllFolders' : ActorMethod<[], Array<Folder>>,
   'listClients' : ActorMethod<[bigint, bigint, boolean], Array<Client>>,
   'listDocumentsByMatter' : ActorMethod<
     [bigint, bigint, bigint, boolean],
     Array<Document>
   >,
+  'listFolderContents' : ActorMethod<[FolderScope], FolderListing>,
+  'listLibraryItems' : ActorMethod<
+    [LibraryFilter, bigint, bigint],
+    Array<LibraryItemSearchResult>
+  >,
+  'listLibraryVersions' : ActorMethod<[bigint], Array<LibraryVersion>>,
   'listMatters' : ActorMethod<
     [bigint, bigint, [] | [MatterStatus]],
     Array<Matter>
@@ -217,14 +322,24 @@ export interface ThePractice {
     [bigint, bigint, bigint, [] | [MatterStatus]],
     Array<Matter>
   >,
+  'listTopUpRequests' : ActorMethod<
+    [[] | [TopUpRequestStatus]],
+    Array<TopUpRequestRecord>
+  >,
   'listUsers' : ActorMethod<[], Array<[Principal, UserRecord]>>,
   'listVersions' : ActorMethod<[bigint], Array<DocumentVersion>>,
   'mattersByStatus' : ActorMethod<[], MatterStatusCounts>,
-  'prepareDocumentDownload' : ActorMethod<[bigint], Result_3>,
+  'moveFolder' : ActorMethod<[bigint, [] | [bigint]], Result>,
+  'moveLibraryItem' : ActorMethod<[bigint, [] | [bigint]], Result>,
+  'prepareDocumentDownload' : ActorMethod<[bigint], Result_4>,
+  'prepareLibraryDownload' : ActorMethod<[bigint], Result_3>,
   'putMatterOnHold' : ActorMethod<[bigint], Result>,
   'reactivateClient' : ActorMethod<[bigint], Result>,
   'readAuditEntries' : ActorMethod<[bigint, bigint], Result_2>,
+  'removeLibraryItemTag' : ActorMethod<[bigint, string], Result>,
   'removeUser' : ActorMethod<[Principal], Result>,
+  'renameFolder' : ActorMethod<[bigint, string], Result>,
+  'renameLibraryItem' : ActorMethod<[bigint, string], Result>,
   'reopenMatter' : ActorMethod<[bigint], Result>,
   'resumeMatter' : ActorMethod<[bigint], Result>,
   'revokeOperations' : ActorMethod<[], Result>,
@@ -233,15 +348,35 @@ export interface ThePractice {
     [DocumentFilter, bigint, bigint],
     Array<DocumentSearchResult>
   >,
+  'searchLibrary' : ActorMethod<
+    [LibraryFilter, bigint, bigint],
+    Array<LibraryItemSearchResult>
+  >,
   'searchMatters' : ActorMethod<[MatterFilter, bigint, bigint], Array<Matter>>,
+  'setLibraryItemTags' : ActorMethod<[bigint, Array<string>], Result>,
   'setStorageBudget' : ActorMethod<[bigint], Result>,
   'setUserRole' : ActorMethod<[Principal, Role], Result>,
+  'startLibraryUpload' : ActorMethod<
+    [
+      string,
+      [] | [bigint],
+      Array<string>,
+      string,
+      string,
+      string,
+      bigint,
+      string,
+      [] | [bigint],
+    ],
+    Result_1
+  >,
   'startUpload' : ActorMethod<
     [bigint, string, string, bigint, string, [] | [bigint]],
     Result_1
   >,
   'suspendUser' : ActorMethod<[Principal], Result>,
   'transferMasterController' : ActorMethod<[Principal], Result>,
+  'unarchiveLibraryItem' : ActorMethod<[bigint], Result>,
   'unsuspendUser' : ActorMethod<[Principal], Result>,
   'updateClient' : ActorMethod<
     [
@@ -255,6 +390,7 @@ export interface ThePractice {
     ],
     Result
   >,
+  'updateLibraryItemDescription' : ActorMethod<[bigint, string], Result>,
   'updateMatter' : ActorMethod<
     [
       bigint,
@@ -269,6 +405,21 @@ export interface ThePractice {
   'whoAmI' : ActorMethod<[], Principal>,
 }
 export type Time = bigint;
+export interface TopUpRequestRecord {
+  'id' : bigint,
+  'status' : TopUpRequestStatus,
+  'note' : string,
+  'createdAt' : Time,
+  'createdBy' : Principal,
+  'requestedTrillionCycles' : bigint,
+  'cancelledAt' : [] | [Time],
+  'cancelledBy' : [] | [Principal],
+  'fulfilledAt' : [] | [Time],
+  'fulfilledBy' : [] | [Principal],
+}
+export type TopUpRequestStatus = { 'Cancelled' : null } |
+  { 'Fulfilled' : null } |
+  { 'Pending' : null };
 export interface UserRecord {
   'role' : Role,
   'addedAt' : Time,

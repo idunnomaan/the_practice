@@ -3,7 +3,7 @@ import { useParams } from "react-router-dom";
 import { useDocuments } from "../hooks/useDocuments";
 import { useAuth } from "../auth/useAuth";
 import { Role, DocumentStatus } from "../backend/api/backend";
-import type { Document, DocumentVersion } from "../backend/api/backend";
+import type { Document, DocumentVersion, DocumentSearchResult } from "../backend/api/backend";
 import LoadingSpinner from "../components/LoadingSpinner";
 import ErrorMessage from "../components/ErrorMessage";
 import ConfirmDialog from "../components/ConfirmDialog";
@@ -25,7 +25,7 @@ function docStatusBadge(status: string) {
 export default function DocumentsPage() {
   const { id } = useParams<{ id: string }>();
   const matterId = BigInt(id ?? "0");
-  const { role } = useAuth();
+  const { role, actor } = useAuth();
   const { documents, loading, error, load, upload, download, deleteDocument, getVersion } = useDocuments(matterId);
 
   const fileRef = useRef<HTMLInputElement>(null);
@@ -36,6 +36,9 @@ export default function DocumentsPage() {
   const [confirmDelete, setConfirmDelete] = useState<bigint | null>(null);
   const [versions, setVersions] = useState<Map<bigint, DocumentVersion>>(new Map());
   const [downloading, setDownloading] = useState<bigint | null>(null);
+  const [searchQuery, setSearchQuery] = useState("");
+  const [searchResults, setSearchResults] = useState<DocumentSearchResult[] | null>(null);
+  const [searchLoading, setSearchLoading] = useState(false);
 
   useEffect(() => { void load(); }, [load]);
 
@@ -90,6 +93,23 @@ export default function DocumentsPage() {
     }
   }
 
+  async function handleSearch(e: React.FormEvent) {
+    e.preventDefault();
+    if (!actor || !searchQuery.trim()) { setSearchResults(null); return; }
+    setSearchLoading(true);
+    try {
+      const results = await actor.searchDocuments(
+        { filenameContains: searchQuery.trim(), matterId: matterId },
+        0n, 200n,
+      );
+      setSearchResults(results);
+    } catch {
+      setSearchResults([]);
+    } finally {
+      setSearchLoading(false);
+    }
+  }
+
   async function handleDelete() {
     if (confirmDelete === null) return;
     const docId = confirmDelete;
@@ -137,9 +157,34 @@ export default function DocumentsPage() {
 
       {actionError && <ErrorMessage message={actionError} onDismiss={() => setActionError(null)} />}
       {error && <ErrorMessage message={error} />}
-      {loading && <LoadingSpinner />}
+      {(loading || searchLoading) && <LoadingSpinner />}
+
+      <form onSubmit={(e) => { void handleSearch(e); }}
+        style={{ display: "flex", gap: 6, marginBottom: 12 }}>
+        <input
+          className="tp-input"
+          style={{ flex: 1 }}
+          value={searchQuery}
+          onChange={e => setSearchQuery(e.target.value)}
+          placeholder="Search by filename…"
+        />
+        <button type="submit" className="btn btn-neutral" disabled={!searchQuery.trim() || searchLoading}>
+          <i className="ti ti-search" /> Search
+        </button>
+        {searchResults !== null && (
+          <button type="button" className="btn btn-neutral"
+            onClick={() => { setSearchQuery(""); setSearchResults(null); }}>
+            Clear
+          </button>
+        )}
+      </form>
 
       <div className="card">
+        {searchResults !== null && (
+          <div style={{ fontSize: 12, color: "var(--tx2)", marginBottom: 8 }}>
+            Showing {searchResults.length} result{searchResults.length !== 1 ? "s" : ""} for "{searchQuery}"
+          </div>
+        )}
         <table className="tp-table">
           <thead>
             <tr>
@@ -151,16 +196,15 @@ export default function DocumentsPage() {
             </tr>
           </thead>
           <tbody>
-            {documents.map(doc => {
-              const ver = versions.get(doc.id);
-              return (
+            {searchResults !== null
+              ? searchResults.map(({ document: doc, currentVersion: ver }) => (
                 <tr key={String(doc.id)} style={{ opacity: doc.status === DocumentStatus.Deleted ? 0.5 : 1 }}>
                   <td>
-                    <i className={`ti ${fileIcon(ver?.contentType)} file-icon`} />
-                    {ver?.filename ?? "…"}
+                    <i className={`ti ${fileIcon(ver.contentType)} file-icon`} />
+                    {ver.filename}
                   </td>
-                  <td style={{ color: "var(--tx2)", fontSize: 12 }}>{ver?.contentType ?? "…"}</td>
-                  <td>{ver ? formatBytes(ver.sizeBytes) : "…"}</td>
+                  <td style={{ color: "var(--tx2)", fontSize: 12 }}>{ver.contentType}</td>
+                  <td>{formatBytes(ver.sizeBytes)}</td>
                   <td><span className={docStatusBadge(doc.status)}>{doc.status}</span></td>
                   <td>
                     {doc.status === DocumentStatus.Active && (
@@ -181,10 +225,44 @@ export default function DocumentsPage() {
                     )}
                   </td>
                 </tr>
-              );
-            })}
-            {!loading && documents.length === 0 && (
-              <tr><td colSpan={5} className="empty-state">No documents.</td></tr>
+              ))
+              : documents.map(doc => {
+                const ver = versions.get(doc.id);
+                return (
+                  <tr key={String(doc.id)} style={{ opacity: doc.status === DocumentStatus.Deleted ? 0.5 : 1 }}>
+                    <td>
+                      <i className={`ti ${fileIcon(ver?.contentType)} file-icon`} />
+                      {ver?.filename ?? "…"}
+                    </td>
+                    <td style={{ color: "var(--tx2)", fontSize: 12 }}>{ver?.contentType ?? "…"}</td>
+                    <td>{ver ? formatBytes(ver.sizeBytes) : "…"}</td>
+                    <td><span className={docStatusBadge(doc.status)}>{doc.status}</span></td>
+                    <td>
+                      {doc.status === DocumentStatus.Active && (
+                        <div style={{ display: "flex", gap: 6 }}>
+                          <button
+                            className="btn btn-neutral btn-sm"
+                            onClick={() => { void handleDownload(doc); }}
+                            disabled={downloading === doc.id}
+                          >
+                            {downloading === doc.id ? "…" : "Download"}
+                          </button>
+                          {role === Role.Partner && (
+                            <button className="btn btn-danger btn-sm" onClick={() => setConfirmDelete(doc.id)}>
+                              Delete
+                            </button>
+                          )}
+                        </div>
+                      )}
+                    </td>
+                  </tr>
+                );
+              })
+            }
+            {!loading && !searchLoading && (searchResults ?? documents).length === 0 && (
+              <tr><td colSpan={5} className="empty-state">
+                {searchResults !== null ? "No results." : "No documents."}
+              </td></tr>
             )}
           </tbody>
         </table>

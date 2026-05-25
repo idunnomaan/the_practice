@@ -19,6 +19,8 @@ import DocumentModule "./Document";
 import Search "./Search";
 import Export "./Export";
 import Library "./Library";
+import Cycles "mo:core/Cycles";
+import TopUpRequest "./TopUpRequest";
 
 shared(installer) persistent actor class ThePractice(
   masterControllerArg : Principal
@@ -58,6 +60,10 @@ shared(installer) persistent actor class ThePractice(
   type LibraryFilter = Library.LibraryFilter;
   type LibraryItemSearchResult = Library.LibraryItemSearchResult;
   type FolderListing = Library.FolderListing;
+
+  // Admin / Cycle Management types (Admin Settings spec)
+  type TopUpRequestStatus = TopUpRequest.TopUpRequestStatus;
+  type TopUpRequestRecord = TopUpRequest.TopUpRequest;
 
   // INV-1: anonymous principal cannot hold any identity — trap at install if anonymous
   assert not Principal.isAnonymous(masterControllerArg);
@@ -119,6 +125,13 @@ shared(installer) persistent actor class ThePractice(
   var nextLibraryItemId : Nat = 1;
   var nextLibraryVersionId : Nat = 1;
   var nextLibrarySessionId : Nat = 1;
+
+  // Admin / Cycle Management state — additive, no migration of existing state (EOP handles upgrade).
+  let MIN_TOPUP_T_CYCLES : Nat = 1;
+  let MAX_TOPUP_T_CYCLES : Nat = 100;
+  let MAX_TOPUP_NOTE_LENGTH : Nat = 1024;
+  let topUpRequests = MutMap.empty<Nat, TopUpRequestRecord>();
+  var nextTopUpRequestId : Nat = 1;
 
   // ── Audit helpers ─────────────────────────────────────────────────────────
   // SEC-INV-1: auditOk and auditErr are the only write paths into auditLog (append-only).
@@ -254,6 +267,14 @@ shared(installer) persistent actor class ThePractice(
       case null {};
     };
     #err("not authorized")
+  };
+
+  func requireOperationsPrincipal(caller : Principal) : Result.Result<(), Text> {
+    switch operationsPrincipal {
+      case (?ops) { if (caller == ops) return #ok(()) };
+      case null {};
+    };
+    #err("only operations principal can fulfill")
   };
 
   // ── Init ─────────────────────────────────────────────────────────────────
@@ -2597,6 +2618,115 @@ shared(installer) persistent actor class ThePractice(
       }
     );
     Iter.toArray(Iter.take(matched, cap))
+  };
+
+  // ── Admin / Cycle Management ──────────────────────────────────────────────
+  // SEC-INV: createTopUpRequest/cancelTopUpRequest → master controller only.
+  //          fulfillTopUpRequest → operations principal only.
+  //          getTopUpRequest/listTopUpRequests → master OR ops (query, trap on auth failure).
+  //          getCycleBalance → public query, no auth check (balance is public on-chain anyway).
+
+  public shared ({ caller }) func createTopUpRequest(amountT : Nat, note : Text) : async Result.Result<Nat, Text> {
+    switch (Auth.requireAuthenticated(caller)) { case (#err(e)) { auditErr(caller, "topUpRequest.create", null, e); return #err(e) }; case (#ok) {} };
+    switch (Auth.requireMasterController(caller, masterController)) { case (#err(e)) { auditErr(caller, "topUpRequest.create", null, e); return #err(e) }; case (#ok) {} };
+    if (amountT < MIN_TOPUP_T_CYCLES or amountT > MAX_TOPUP_T_CYCLES) {
+      let e = "requestedTrillionCycles must be between " # Nat.toText(MIN_TOPUP_T_CYCLES) # " and " # Nat.toText(MAX_TOPUP_T_CYCLES);
+      auditErr(caller, "topUpRequest.create", null, e);
+      return #err(e);
+    };
+    if (note.size() > MAX_TOPUP_NOTE_LENGTH) {
+      let e = "note exceeds maximum length of " # Nat.toText(MAX_TOPUP_NOTE_LENGTH) # " characters";
+      auditErr(caller, "topUpRequest.create", null, e);
+      return #err(e);
+    };
+    let id = nextTopUpRequestId;
+    nextTopUpRequestId += 1;
+    MutMap.add(topUpRequests, Nat.compare, id, {
+      id;
+      requestedTrillionCycles = amountT;
+      note;
+      status = #Pending;
+      createdAt = Time.now();
+      createdBy = caller;
+      fulfilledAt = null;
+      fulfilledBy = null;
+      cancelledAt = null;
+      cancelledBy = null;
+    });
+    auditOk(caller, "topUpRequest.create", null);
+    #ok(id)
+  };
+
+  public shared ({ caller }) func cancelTopUpRequest(id : Nat) : async Result.Result<(), Text> {
+    switch (Auth.requireAuthenticated(caller)) { case (#err(e)) { auditErr(caller, "topUpRequest.cancel", null, e); return #err(e) }; case (#ok) {} };
+    switch (Auth.requireMasterController(caller, masterController)) { case (#err(e)) { auditErr(caller, "topUpRequest.cancel", null, e); return #err(e) }; case (#ok) {} };
+    let req = switch (MutMap.get(topUpRequests, Nat.compare, id)) {
+      case null {
+        let e = "top-up request " # Nat.toText(id) # " not found";
+        auditErr(caller, "topUpRequest.cancel", null, e); return #err(e);
+      };
+      case (?r) r;
+    };
+    if (req.status != #Pending) {
+      let e = "request is not pending";
+      auditErr(caller, "topUpRequest.cancel", null, e); return #err(e);
+    };
+    MutMap.add(topUpRequests, Nat.compare, id, {
+      req with
+      status = #Cancelled;
+      cancelledAt = ?Time.now();
+      cancelledBy = ?caller;
+    });
+    auditOk(caller, "topUpRequest.cancel", null);
+    #ok(())
+  };
+
+  public shared ({ caller }) func fulfillTopUpRequest(id : Nat) : async Result.Result<(), Text> {
+    switch (Auth.requireAuthenticated(caller)) { case (#err(e)) { auditErr(caller, "topUpRequest.fulfill", null, e); return #err(e) }; case (#ok) {} };
+    switch (requireOperationsPrincipal(caller)) { case (#err(e)) { auditErr(caller, "topUpRequest.fulfill", null, e); return #err(e) }; case (#ok) {} };
+    let req = switch (MutMap.get(topUpRequests, Nat.compare, id)) {
+      case null {
+        let e = "top-up request " # Nat.toText(id) # " not found";
+        auditErr(caller, "topUpRequest.fulfill", null, e); return #err(e);
+      };
+      case (?r) r;
+    };
+    if (req.status != #Pending) {
+      let e = "request is not pending";
+      auditErr(caller, "topUpRequest.fulfill", null, e); return #err(e);
+    };
+    MutMap.add(topUpRequests, Nat.compare, id, {
+      req with
+      status = #Fulfilled;
+      fulfilledAt = ?Time.now();
+      fulfilledBy = ?caller;
+    });
+    auditOk(caller, "topUpRequest.fulfill", null);
+    #ok(())
+  };
+
+  public query ({ caller }) func getTopUpRequest(id : Nat) : async ?TopUpRequestRecord {
+    switch (Auth.requireAuthenticated(caller)) { case (#err(_)) assert false; case (#ok) {} };
+    switch (requireOperationsOrMaster(caller)) { case (#err(_)) assert false; case (#ok) {} };
+    MutMap.get(topUpRequests, Nat.compare, id)
+  };
+
+  public query ({ caller }) func listTopUpRequests(statusFilter : ?TopUpRequestStatus) : async [TopUpRequestRecord] {
+    switch (Auth.requireAuthenticated(caller)) { case (#err(_)) assert false; case (#ok) {} };
+    switch (requireOperationsOrMaster(caller)) { case (#err(_)) assert false; case (#ok) {} };
+    Iter.toArray(Iter.map(
+      Iter.filter(MutMap.entries(topUpRequests), func((_, r) : (Nat, TopUpRequestRecord)) : Bool {
+        switch (statusFilter) {
+          case null true;
+          case (?s) r.status == s;
+        }
+      }),
+      func((_, r) : (Nat, TopUpRequestRecord)) : TopUpRequestRecord { r }
+    ))
+  };
+
+  public query func getCycleBalance() : async Nat {
+    Cycles.balance()
   };
 
   // ── L5 Audit read ─────────────────────────────────────────────────────────
