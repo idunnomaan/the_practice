@@ -40,8 +40,8 @@ export default function DashboardPage() {
       {matters && (
         <div className="stat-grid">
           <StatCard icon="ti-briefcase"    label="Open Matters"  value={matters.open} />
-          <StatCard icon="ti-pause"        label="On Hold"       value={matters.onHold} />
-          <StatCard icon="ti-check"        label="Closed"        value={matters.closed} />
+          <StatCard icon="ti-player-pause" label="On Hold"       value={matters.onHold} />
+          <StatCard icon="ti-circle-check" label="Closed"        value={matters.closed} />
           <StatCard icon="ti-archive"      label="Archived"      value={matters.archived} />
         </div>
       )}
