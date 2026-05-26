@@ -55,7 +55,11 @@ export default function AppShell() {
           <div className="nav-footer">
             <div className="nav-principal">
               {truncatePrincipal(principal)}
-              {role && <span className="nav-role">[{role}]</span>}
+              {(isMasterController || role) && (
+                <span className="nav-role">
+                  [{isMasterController ? "Master Controller" : role}]
+                </span>
+              )}
             </div>
             <button
               className="btn btn-neutral btn-sm btn-full"

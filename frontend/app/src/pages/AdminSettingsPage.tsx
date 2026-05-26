@@ -211,7 +211,7 @@ export default function AdminSettingsPage() {
       {loading && <LoadingSpinner />}
 
       {/* ── Identity ─────────────────────────────────────────────────────── */}
-      <div className="card" style={{ marginBottom: 16 }}>
+      <div className="card" style={{ marginBottom: 16, padding: 16 }}>
         <div className="section-head">Identity</div>
 
         <div style={{ marginBottom: 12 }}>
@@ -229,8 +229,9 @@ export default function AdminSettingsPage() {
 
         {grantError && <ErrorMessage message={grantError} onDismiss={() => setGrantError(null)} />}
         <form onSubmit={(e) => { void handleGrantOps(e); }}
-          style={{ display: "flex", gap: 8, alignItems: "flex-end", flexWrap: "wrap", marginBottom: 8 }}>
-          <label className="tp-label" style={{ flex: 1, minWidth: 200, marginBottom: 0 }}>
+          style={{ display: "flex", gap: 8, alignItems: "flex-end", marginBottom: 8 }}>
+          <label className="tp-label"
+            style={{ flex: "0 0 70%", marginBottom: 0, textTransform: "none", letterSpacing: 0, fontSize: 13, color: "var(--tx)" }}>
             Grant operations principal
             <input
               className="tp-input"
@@ -240,25 +241,39 @@ export default function AdminSettingsPage() {
               disabled={grantBusy}
             />
           </label>
-          <button type="submit" className="btn btn-primary" disabled={grantBusy || !grantInput.trim()}>
+          <button type="submit" className="btn btn-primary btn-sm" disabled={grantBusy || !grantInput.trim()}>
             {grantBusy ? "…" : "Grant"}
           </button>
           {opsPrincipal && (
-            <button type="button" className="btn btn-danger" disabled={grantBusy}
+            <button type="button" className="btn btn-danger btn-sm" disabled={grantBusy}
               onClick={() => { void handleRevokeOps(); }}>
               Revoke
             </button>
           )}
         </form>
 
-        <button className="btn btn-danger" style={{ marginTop: 4 }}
-          onClick={() => setShowTransfer(true)}>
-          Transfer master controller…
-        </button>
+        {/* Danger Zone */}
+        <div style={{
+          marginTop: 20,
+          borderTop: "0.5px solid var(--bd)",
+          paddingTop: 14,
+        }}>
+          <div style={{ fontSize: 11, fontWeight: 600, color: "var(--danger, #ef4444)", textTransform: "uppercase", letterSpacing: "0.05em", marginBottom: 8 }}>
+            Danger zone
+          </div>
+          <p style={{ fontSize: 12, color: "var(--tx2)", margin: "0 0 10px" }}>
+            Irreversible. Transfers all master controller authority to a new principal.
+          </p>
+          <button className="btn btn-danger btn-sm"
+            style={{ border: "1px solid var(--danger, #ef4444)", background: "transparent", color: "var(--danger, #ef4444)" }}
+            onClick={() => setShowTransfer(true)}>
+            Transfer master controller…
+          </button>
+        </div>
       </div>
 
       {/* ── Storage ──────────────────────────────────────────────────────── */}
-      <div className="card" style={{ marginBottom: 16 }}>
+      <div className="card" style={{ marginBottom: 16, padding: 16 }}>
         <div className="section-head">Storage</div>
         {storageUsed !== null && storageBudget !== null && storageBudget > 0n && (
           <StorageBar usedBytes={storageUsed} limitBytes={storageBudget} label="Canister storage" />
@@ -266,7 +281,8 @@ export default function AdminSettingsPage() {
         {budgetError && <ErrorMessage message={budgetError} onDismiss={() => setBudgetError(null)} />}
         <form onSubmit={(e) => { void handleSetBudget(e); }}
           style={{ display: "flex", gap: 8, alignItems: "flex-end", marginTop: 8 }}>
-          <label className="tp-label" style={{ flex: "0 0 180px", marginBottom: 0 }}>
+          <label className="tp-label"
+            style={{ flex: "0 0 180px", marginBottom: 0, textTransform: "none", letterSpacing: 0, fontSize: 13, color: "var(--tx)" }}>
             Set budget (GB)
             <input
               className="tp-input"
@@ -281,14 +297,14 @@ export default function AdminSettingsPage() {
               disabled={budgetBusy}
             />
           </label>
-          <button type="submit" className="btn btn-primary" disabled={budgetBusy || !budgetInput}>
+          <button type="submit" className="btn btn-primary btn-sm" disabled={budgetBusy || !budgetInput}>
             {budgetBusy ? "…" : "Update"}
           </button>
         </form>
       </div>
 
       {/* ── Cycles ───────────────────────────────────────────────────────── */}
-      <div className="card" style={{ marginBottom: 16 }}>
+      <div className="card" style={{ marginBottom: 16, padding: 16 }}>
         <div className="section-head">Cycle balances</div>
         {backendCycles !== null && (
           <CycleBalanceBar cycles={backendCycles} idleBurnPerDay={0n} label="Backend canister" />
@@ -296,7 +312,8 @@ export default function AdminSettingsPage() {
         {frontendCycles !== null
           ? <CycleBalanceBar cycles={frontendCycles} idleBurnPerDay={frontendIdleBurn} label="Frontend canister" />
           : FRONTEND_CANISTER_ID
-            ? <div style={{ fontSize: 13, color: "var(--tx2)" }}>
+            ? <div style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 12, color: "var(--tx2)", marginTop: 4 }}>
+                <i className="ti ti-info-circle" style={{ fontSize: 14, flexShrink: 0 }} />
                 Frontend balance unavailable — master principal must be an IC controller of the frontend canister.
               </div>
             : null
@@ -304,7 +321,7 @@ export default function AdminSettingsPage() {
       </div>
 
       {/* ── Top-up requests ──────────────────────────────────────────────── */}
-      <div className="card" style={{ marginBottom: 16 }}>
+      <div className="card" style={{ marginBottom: 16, padding: 16 }}>
         <div className="section-head">Cycle top-up requests</div>
         <div style={{ marginBottom: 16 }}>
           <TopUpRequestForm onSubmit={handleCreateTopUp} />

@@ -5,10 +5,12 @@ interface Props {
 }
 
 const T = 1_000_000_000_000n;
+const DISPLAY_MAX = 2n * T; // 2T cap — bar is full green above this
 
 function zone(c: bigint): string {
-  if (c >= 5n * T) return "var(--ok, #22c55e)";
-  if (c >= T)      return "var(--warn, #f59e0b)";
+  const pct = Math.min(100, (Number(c) / Number(DISPLAY_MAX)) * 100);
+  if (pct > 33) return "var(--ok, #22c55e)";
+  if (pct > 10) return "var(--warn, #f59e0b)";
   return "var(--danger, #ef4444)";
 }
 
@@ -18,8 +20,7 @@ export default function CycleBalanceBar({ cycles, idleBurnPerDay, label }: Props
     ? Math.floor(Number(cycles) / Number(idleBurnPerDay))
     : null;
 
-  // Bar fills proportional to a 10T "full" reference
-  const pct = Math.min(100, (Number(cycles) / (Number(T) * 10)) * 100);
+  const pct = Math.min(100, (Number(cycles) / Number(DISPLAY_MAX)) * 100);
   const color = zone(cycles);
 
   return (
