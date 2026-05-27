@@ -100,7 +100,6 @@ export default function LibraryPage() {
   const [uploadError, setUploadError] = useState<string | null>(null);
 
   const [actionError, setActionError] = useState<string | null>(null);
-  const [confirmDeleteItem, setConfirmDeleteItem] = useState<bigint | null>(null);
   const [confirmDeleteFolder, setConfirmDeleteFolder] = useState<bigint | null>(null);
   const [downloading, setDownloading] = useState<bigint | null>(null);
   const [searchQuery, setSearchQuery] = useState("");
@@ -217,10 +216,7 @@ export default function LibraryPage() {
     finally { setDownloading(null); }
   }
 
-  async function handleDeleteItem() {
-    if (confirmDeleteItem === null) return;
-    const id = confirmDeleteItem;
-    setConfirmDeleteItem(null);
+  async function handleDeleteItem(id: bigint) {
     setActionError(null);
     const result = await deleteItem(id);
     if (result.__kind__ === "err") setActionError(result.err);
@@ -233,13 +229,6 @@ export default function LibraryPage() {
         <div className="page-title">Firm Library</div>
       </div>
 
-      {confirmDeleteItem !== null && (
-        <ConfirmDialog
-          message="Delete this library item? This cannot be undone."
-          onConfirm={() => { void handleDeleteItem(); }}
-          onCancel={() => setConfirmDeleteItem(null)}
-        />
-      )}
       {confirmDeleteFolder !== null && (
         <ConfirmDialog
           message="Delete this folder? It must be empty first."
@@ -446,8 +435,15 @@ export default function LibraryPage() {
                           {downloading === item.id ? "…" : "Download"}
                         </button>
                         {canDeleteItem && item.status === LibraryItemStatus.Active && (
-                          <button className="btn btn-danger btn-sm"
-                            onClick={() => setConfirmDeleteItem(item.id)}>
+                          <button
+                            className="btn btn-danger btn-sm"
+                            style={{ border: "1px solid var(--danger, #ef4444)", background: "transparent", color: "var(--danger, #ef4444)" }}
+                            onClick={() => {
+                              if (window.confirm(`Delete '${item.name}'? This cannot be undone.`)) {
+                                void handleDeleteItem(item.id);
+                              }
+                            }}
+                          >
                             Delete
                           </button>
                         )}
