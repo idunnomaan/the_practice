@@ -19,6 +19,7 @@ export default function UsersPage() {
   const [formError, setFormError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [actionError, setActionError] = useState<string | null>(null);
+  const [roleToast, setRoleToast] = useState(false);
 
   useEffect(() => { void load(); }, [load]);
 
@@ -56,11 +57,26 @@ export default function UsersPage() {
     const result = await setUserRole(p, role);
     if (!result) return;
     if (result.__kind__ === "err") setActionError(result.err);
-    else void load();
+    else {
+      void load();
+      setRoleToast(true);
+      setTimeout(() => setRoleToast(false), 2000);
+    }
   }
 
   return (
     <div>
+      {roleToast && (
+        <div style={{
+          position: "fixed", bottom: 24, right: 24,
+          background: "#16a34a", color: "#fff",
+          padding: "10px 18px", borderRadius: 6,
+          fontSize: 13, fontWeight: 500, zIndex: 1000,
+          boxShadow: "0 2px 8px rgba(0,0,0,0.2)",
+        }}>
+          Role updated
+        </div>
+      )}
       <div className="page-header">
         <div className="page-title">User Management</div>
       </div>
