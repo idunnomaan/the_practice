@@ -3,6 +3,38 @@ import { useAudit } from "../hooks/useAudit";
 import LoadingSpinner from "../components/LoadingSpinner";
 import ErrorMessage from "../components/ErrorMessage";
 
+function fmtAction(raw: string): string {
+  const map: Record<string, string> = {
+    install: "System installed",
+    addUser: "User added",
+    createClient: "Client created",
+    updateClient: "Client updated",
+    deactivateClient: "Client deactivated",
+    reactivateClient: "Client reactivated",
+    createMatter: "Matter created",
+    putMatterOnHold: "Matter put on hold",
+    resumeMatter: "Matter resumed",
+    closeMatter: "Matter closed",
+    archiveMatter: "Matter archived",
+    "library.upload.start": "Library upload started",
+    appendLibraryChunk: "Library file chunk uploaded",
+    grantOperations: "Operations principal granted",
+    revokeOperations: "Operations principal revoked",
+    transferMasterController: "Master controller transferred",
+    readAuditEntries: "Audit log read",
+    setStorageBudget: "Storage budget updated",
+    requestCycleTopUp: "Cycle top-up requested",
+    // In-App File Rendering sprint (2026-05-27) — format changed to dot-notation
+    "document.view": "Document viewed",
+    "document.download": "Document downloaded",
+    "libraryItem.view": "Library item viewed",
+    "library.download": "Library item downloaded",
+  };
+  // Handle dynamic keys like "library.upload:1", "library.upload:2", …
+  if (/^library\.upload:\d+$/.test(raw)) return "Library file chunk uploaded";
+  return map[raw] ?? raw; // fall through: show raw if unmapped (catches future additions)
+}
+
 export default function AuditPage() {
   const { entries, loading, error, hasMore, loadFirst, loadMore } = useAudit();
 
@@ -43,7 +75,7 @@ export default function AuditPage() {
               <tr key={String(e.id)}>
                 <td className="mono" style={{ whiteSpace: "nowrap" }}>{formatTime(e.timestamp)}</td>
                 <td><span className="mono">{truncate(e.caller.toText())}</span></td>
-                <td>{e.action}</td>
+                <td>{fmtAction(e.action)}</td>
                 <td>{e.target ? <span className="mono">{truncate(e.target.toText())}</span> : "—"}</td>
                 <td>
                   {e.outcome.__kind__ === "ok"
