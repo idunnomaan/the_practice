@@ -127,6 +127,9 @@ export default function DocumentsPage() {
     <div>
       <div className="page-header">
         <div className="page-title">Documents — Matter {id}</div>
+        <button className="add-btn" onClick={() => fileRef.current?.click()} disabled={uploading}>
+          <i className="ti ti-upload" /> Upload document
+        </button>
       </div>
 
       {confirmDelete !== null && (
@@ -137,14 +140,14 @@ export default function DocumentsPage() {
         />
       )}
 
-      <div className="upload-area">
+      <div>
         <input
           ref={fileRef}
           type="file"
           accept=".pdf,.docx,.png,.jpg,.jpeg"
           onChange={(e) => { void handleFileChange(e); }}
           disabled={uploading}
-          style={{ fontSize: 13 }}
+          style={{ display: "none" }}
         />
         {uploading && (
           <>
