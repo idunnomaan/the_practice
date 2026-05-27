@@ -107,6 +107,8 @@ export interface ExportManifest {
   'operationsPrincipal' : [] | [Principal],
   'totalDocuments' : bigint,
 }
+export type FileAccessKind = { 'View' : null } |
+  { 'Download' : null };
 export interface Folder {
   'id' : bigint,
   'name' : string,
@@ -331,8 +333,8 @@ export interface ThePractice {
   'mattersByStatus' : ActorMethod<[], MatterStatusCounts>,
   'moveFolder' : ActorMethod<[bigint, [] | [bigint]], Result>,
   'moveLibraryItem' : ActorMethod<[bigint, [] | [bigint]], Result>,
-  'prepareDocumentDownload' : ActorMethod<[bigint], Result_4>,
-  'prepareLibraryDownload' : ActorMethod<[bigint], Result_3>,
+  'prepareDocumentDownload' : ActorMethod<[bigint, FileAccessKind], Result_4>,
+  'prepareLibraryDownload' : ActorMethod<[bigint, FileAccessKind], Result_3>,
   'putMatterOnHold' : ActorMethod<[bigint], Result>,
   'reactivateClient' : ActorMethod<[bigint], Result>,
   'readAuditEntries' : ActorMethod<[bigint, bigint], Result_2>,

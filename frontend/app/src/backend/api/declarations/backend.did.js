@@ -227,6 +227,10 @@ export const idlFactory = ({ IDL }) => {
     'onHold' : IDL.Nat,
     'archived' : IDL.Nat,
   });
+  const FileAccessKind = IDL.Variant({
+    'View' : IDL.Null,
+    'Download' : IDL.Null,
+  });
   const Result_4 = IDL.Variant({
     'ok' : IDL.Record({
       'sha256' : IDL.Vec(IDL.Nat8),
@@ -442,8 +446,16 @@ export const idlFactory = ({ IDL }) => {
     'mattersByStatus' : IDL.Func([], [MatterStatusCounts], ['query']),
     'moveFolder' : IDL.Func([IDL.Nat, IDL.Opt(IDL.Nat)], [Result], []),
     'moveLibraryItem' : IDL.Func([IDL.Nat, IDL.Opt(IDL.Nat)], [Result], []),
-    'prepareDocumentDownload' : IDL.Func([IDL.Nat], [Result_4], []),
-    'prepareLibraryDownload' : IDL.Func([IDL.Nat], [Result_3], []),
+    'prepareDocumentDownload' : IDL.Func(
+        [IDL.Nat, FileAccessKind],
+        [Result_4],
+        [],
+      ),
+    'prepareLibraryDownload' : IDL.Func(
+        [IDL.Nat, FileAccessKind],
+        [Result_3],
+        [],
+      ),
     'putMatterOnHold' : IDL.Func([IDL.Nat], [Result], []),
     'reactivateClient' : IDL.Func([IDL.Nat], [Result], []),
     'readAuditEntries' : IDL.Func([IDL.Nat, IDL.Nat], [Result_2], []),

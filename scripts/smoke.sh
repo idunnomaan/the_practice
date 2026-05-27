@@ -727,20 +727,20 @@ echo ""
 echo "Step 68: prepareDocumentDownload on deleted document — expect err"
 VER2_OF_DOC2=$(icp canister call backend getDocument "($DOC2_ID : nat)" | python3 -c \
   "import sys,re; m=re.search(r'currentVersionId\s*=\s*(\d+)',sys.stdin.read()); print(m.group(1) if m else '0')")
-RESULT=$(icp canister call backend prepareDocumentDownload "($VER2_OF_DOC2 : nat)")
+RESULT=$(icp canister call backend prepareDocumentDownload "($VER2_OF_DOC2 : nat, variant { Download })")
 check "download deleted document returns err" "err" "$RESULT"
 check "error mentions not active\|deleted" "not active\|deleted\|not found" "$RESULT"
 RESULT=$(icp canister call backend readAuditEntries "(0 : nat, 1000 : nat)")
-check "failed download audit entry recorded" "documentDownload" "$RESULT"
+check "failed download audit entry recorded" "document.download" "$RESULT"
 echo ""
 
 # ── Step 69: Download success flow ────────────────────────────────────────────
 echo "Step 69: Download success — prepareDocumentDownload + getChunk for doc $DOC1_ID"
-RESULT=$(icp canister call backend prepareDocumentDownload "($VER1_ID : nat)")
+RESULT=$(icp canister call backend prepareDocumentDownload "($VER1_ID : nat, variant { Download })")
 check "prepareDocumentDownload returns ok" "ok" "$RESULT"
 check "response includes chunkCount" "chunkCount\|chunk_count" "$RESULT"
 RESULT=$(icp canister call backend readAuditEntries "(0 : nat, 1000 : nat)")
-check "documentDownload audit entry recorded with docId" "documentDownload:$DOC1_ID" "$RESULT"
+check "document.download audit entry recorded with docId" "document.download:$DOC1_ID" "$RESULT"
 # getChunk for chunk 0 (single-chunk file)
 RESULT=$(icp canister call backend getChunk "($VER1_ID : nat, 0 : nat)" --query)
 check "getChunk returns blob (not null)" "blob" "$RESULT"
@@ -883,7 +883,7 @@ echo ""
 
 # ── Step 82: L2b post-upgrade — prepareDocumentDownload succeeds ─────────────
 echo "Step 82: L2b post-upgrade — prepareDocumentDownload($VER1_ID) succeeds"
-RESULT=$(icp canister call backend prepareDocumentDownload "($VER1_ID : nat)")
+RESULT=$(icp canister call backend prepareDocumentDownload "($VER1_ID : nat, variant { Download })")
 check "L2b: prepareDocumentDownload still works after upgrade" "ok" "$RESULT"
 echo ""
 
@@ -1471,7 +1471,7 @@ echo ""
 
 # ── Step 118: Download flow — prepareLibraryDownload + getLibraryChunk ─────────
 echo "Step 118: prepareLibraryDownload returns metadata; getLibraryChunk returns chunk bytes"
-DOWNLOAD=$(icp canister call backend prepareLibraryDownload "($LIB_V1 : nat)")
+DOWNLOAD=$(icp canister call backend prepareLibraryDownload "($LIB_V1 : nat, variant { Download })")
 check "prepareLibraryDownload ok" "ok" "$DOWNLOAD"
 check "prepareLibraryDownload has chunkCount field" "chunkCount" "$DOWNLOAD"
 check "prepareLibraryDownload has filename field" "filename" "$DOWNLOAD"
@@ -1488,7 +1488,7 @@ echo ""
 echo "Step 119: prepareLibraryDownload on archived item ok; getLibraryChunk on deleted item null"
 R=$(icp canister call backend archiveLibraryItem "($LIB_ITEM1 : nat)")
 check "archive item1 for download test" "ok" "$R"
-R=$(icp canister call backend prepareLibraryDownload "($LIB_V3 : nat)")
+R=$(icp canister call backend prepareLibraryDownload "($LIB_V3 : nat, variant { Download })")
 check "prepareLibraryDownload on archived item ok (SEC-INV-15)" "ok" "$R"
 R=$(icp canister call backend getLibraryChunk "($LIB_V3 : nat, 0 : nat)")
 check "getLibraryChunk archived item returns bytes" "opt" "$R"
@@ -1748,6 +1748,61 @@ TOPUP_POST=$(echo "$R" | python3 -c "import sys,re; m=re.search(r'ok\s*=\s*(\d+)
 check "post-upgrade: counter continues (id=4, not reset)" "4" "$TOPUP_POST"
 R=$(icp canister call backend listTopUpRequests "(opt variant { Pending })")
 check "post-upgrade: listTopUpRequests shows 2 pending (id 3 + 4)" "Pending" "$R"
+echo ""
+
+# ── Steps 141–147: In-App File Rendering — audit action distinction ──────────
+# D1: document.view / document.download / libraryItem.view / library.download
+# D8: identical role gates for View and Download paths
+
+echo "Step 141: prepareDocumentDownload(#View) — returns ok; audit emits document.view"
+R=$(icp canister call backend prepareDocumentDownload "($VER1_ID : nat, variant { View })")
+check "prepareDocumentDownload #View returns ok" "ok" "$R"
+check "response has documentId field" "documentId" "$R"
+check "response has chunkCount field" "chunkCount" "$R"
+AUDIT141=$(icp canister call backend readAuditEntries "(0 : nat, 5000 : nat)")
+check "audit contains document.view entry" "document.view" "$AUDIT141"
+echo ""
+
+echo "Step 142: prepareDocumentDownload(#Download) — returns ok; audit emits document.download"
+R=$(icp canister call backend prepareDocumentDownload "($VER1_ID : nat, variant { Download })")
+check "prepareDocumentDownload #Download returns ok" "ok" "$R"
+AUDIT142=$(icp canister call backend readAuditEntries "(0 : nat, 5000 : nat)")
+check "audit contains document.download entry" "document.download" "$AUDIT142"
+echo ""
+
+echo "Step 143: document.view and document.download are distinct strings in audit"
+# Both must be present; already verified individually above
+check "audit has view string (confirms step 141)" "document.view" "$AUDIT142"
+check "audit has download string (confirms step 142)" "document.download" "$AUDIT142"
+echo ""
+
+echo "Step 144: role gate — anonymous denied #View (D8: identical gate as #Download)"
+R=$(icp canister call backend prepareDocumentDownload "($VER1_ID : nat, variant { View })" --identity anonymous)
+check "anonymous denied #View on document" "err" "$R"
+echo ""
+
+echo "Step 145: prepareLibraryDownload(#View) — returns ok; audit emits libraryItem.view"
+# LIB_V1 was set during Firm Library steps (item1 version 1); item1 is active at this point
+R=$(icp canister call backend prepareLibraryDownload "($LIB_V1 : nat, variant { View })")
+check "prepareLibraryDownload #View returns ok" "ok" "$R"
+check "response has itemId field" "itemId" "$R"
+check "response has chunkCount field" "chunkCount" "$R"
+AUDIT145=$(icp canister call backend readAuditEntries "(0 : nat, 5000 : nat)")
+check "audit contains libraryItem.view entry" "libraryItem.view" "$AUDIT145"
+echo ""
+
+echo "Step 146: prepareLibraryDownload(#Download) — returns ok; audit emits library.download"
+R=$(icp canister call backend prepareLibraryDownload "($LIB_V1 : nat, variant { Download })")
+check "prepareLibraryDownload #Download returns ok" "ok" "$R"
+AUDIT146=$(icp canister call backend readAuditEntries "(0 : nat, 5000 : nat)")
+check "audit contains library.download entry" "library.download" "$AUDIT146"
+echo ""
+
+echo "Step 147: libraryItem.view and library.download are distinct; anonymous denied #View"
+check "audit has libraryItem.view string" "libraryItem.view" "$AUDIT146"
+check "audit has library.download string" "library.download" "$AUDIT146"
+R=$(icp canister call backend prepareLibraryDownload "($LIB_V1 : nat, variant { View })" --identity anonymous)
+check "anonymous denied #View on library item" "err" "$R"
 echo ""
 
 # ── Summary ──────────────────────────────────────────────────────────────────

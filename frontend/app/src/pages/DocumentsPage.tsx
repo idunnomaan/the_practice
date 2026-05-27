@@ -7,6 +7,7 @@ import type { Document, DocumentVersion, DocumentSearchResult } from "../backend
 import LoadingSpinner from "../components/LoadingSpinner";
 import ErrorMessage from "../components/ErrorMessage";
 import ConfirmDialog from "../components/ConfirmDialog";
+import { useFileViewer } from "../state/fileViewerStore";
 
 const ALLOWED_TYPES = ["application/pdf", "application/vnd.openxmlformats-officedocument.wordprocessingml.document", "image/png", "image/jpeg"];
 const MAX_SIZE = 100 * 1024 * 1024; // 100 MB
@@ -26,6 +27,7 @@ export default function DocumentsPage() {
   const { id } = useParams<{ id: string }>();
   const matterId = BigInt(id ?? "0");
   const { role, actor } = useAuth();
+  const { openViewer } = useFileViewer();
   const { documents, loading, error, load, upload, download, deleteDocument, getVersion } = useDocuments(matterId);
 
   const fileRef = useRef<HTMLInputElement>(null);
@@ -211,6 +213,16 @@ export default function DocumentsPage() {
                       <div style={{ display: "flex", gap: 6 }}>
                         <button
                           className="btn btn-neutral btn-sm"
+                          onClick={() => openViewer({
+                            kind: "document", id: doc.id, versionId: ver!.versionId,
+                            filename: ver!.filename, contentType: ver!.contentType, sizeBytes: ver!.sizeBytes,
+                          })}
+                          disabled={!ver}
+                        >
+                          View
+                        </button>
+                        <button
+                          className="btn btn-neutral btn-sm"
                           onClick={() => { void handleDownload(doc); }}
                           disabled={downloading === doc.id}
                         >
@@ -240,6 +252,16 @@ export default function DocumentsPage() {
                     <td>
                       {doc.status === DocumentStatus.Active && (
                         <div style={{ display: "flex", gap: 6 }}>
+                          <button
+                            className="btn btn-neutral btn-sm"
+                            onClick={() => ver && openViewer({
+                              kind: "document", id: doc.id, versionId: ver.versionId,
+                              filename: ver.filename, contentType: ver.contentType, sizeBytes: ver.sizeBytes,
+                            })}
+                            disabled={!ver}
+                          >
+                            View
+                          </button>
                           <button
                             className="btn btn-neutral btn-sm"
                             onClick={() => { void handleDownload(doc); }}

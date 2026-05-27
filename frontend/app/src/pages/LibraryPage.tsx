@@ -6,6 +6,7 @@ import type { Folder, FolderScope, LibraryItem, LibraryItemSearchResult } from "
 import LoadingSpinner from "../components/LoadingSpinner";
 import ErrorMessage from "../components/ErrorMessage";
 import ConfirmDialog from "../components/ConfirmDialog";
+import { useFileViewer } from "../state/fileViewerStore";
 
 const MAX_SIZE = 5 * 1024 * 1024 * 1024; // 5 GiB per-item ceiling (Q9)
 
@@ -72,6 +73,7 @@ function formatBytes(bytes: bigint) {
 
 export default function LibraryPage() {
   const { role, actor } = useAuth();
+  const { openViewer } = useFileViewer();
   const {
     folders, listing, loading, error,
     loadFolders, loadContents,
@@ -431,6 +433,13 @@ export default function LibraryPage() {
                     </td>
                     <td>
                       <div style={{ display: "flex", gap: 6 }}>
+                        <button className="btn btn-neutral btn-sm"
+                          onClick={() => openViewer({
+                            kind: "library", id: item.id, versionId: ver.versionId,
+                            filename: ver.filename, contentType: ver.contentType, sizeBytes: ver.sizeBytes,
+                          })}>
+                          View
+                        </button>
                         <button className="btn btn-neutral btn-sm"
                           onClick={() => { void handleDownload(item); }}
                           disabled={downloading === item.id}>

@@ -1,5 +1,6 @@
 import { useState, useCallback } from "react";
 import { useAuth } from "../auth/useAuth";
+import { FileAccessKind } from "../backend/api/backend";
 import type { Document, DocumentVersion } from "../backend/api/backend";
 
 const CHUNK_SIZE = 1024 * 1024; // 1 MB
@@ -64,7 +65,7 @@ export function useDocuments(matterId: bigint) {
   const download = useCallback(async (doc: Document) => {
     if (!actor) return;
 
-    const prepResult = await actor.prepareDocumentDownload(doc.currentVersionId);
+    const prepResult = await actor.prepareDocumentDownload(doc.currentVersionId, FileAccessKind.Download);
     if (prepResult.__kind__ === "err") {
       throw new Error(prepResult.err);
     }

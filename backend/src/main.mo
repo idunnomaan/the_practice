@@ -21,6 +21,7 @@ import Export "./Export";
 import Library "./Library";
 import Cycles "mo:core/Cycles";
 import TopUpRequest "./TopUpRequest";
+import FileAccess "./FileAccess";
 
 shared(installer) persistent actor class ThePractice(
   masterControllerArg : Principal
@@ -64,6 +65,7 @@ shared(installer) persistent actor class ThePractice(
   // Admin / Cycle Management types (Admin Settings spec)
   type TopUpRequestStatus = TopUpRequest.TopUpRequestStatus;
   type TopUpRequestRecord = TopUpRequest.TopUpRequest;
+  type FileAccessKind = FileAccess.FileAccessKind;
 
   // INV-1: anonymous principal cannot hold any identity — trap at install if anonymous
   assert not Principal.isAnonymous(masterControllerArg);
@@ -1502,24 +1504,28 @@ shared(installer) persistent actor class ThePractice(
   // ── L2b Download flow ─────────────────────────────────────────────────────
   // UPDATE (not query) — must emit audit entry (SEC-INV-11).
   // Q7: chunk bytes flow via getChunk query (fast, not per-chunk-audited).
+  // D1/D8: action param switches audit string (document.view vs document.download);
+  //        role gate is identical for both actions.
 
   public shared ({ caller }) func prepareDocumentDownload(
-    versionId : Nat
+    versionId : Nat,
+    action : FileAccessKind,
   ) : async Result.Result<{ documentId : Nat; sizeBytes : Nat; chunkCount : Nat; sha256 : Blob; contentType : Text; filename : Text }, Text> {
+    let actPrefix = switch (action) { case (#View) "document.view"; case (#Download) "document.download" };
     // SEC-INV-1
     switch (Auth.requireAuthenticated(caller)) {
-      case (#err(e)) { auditErr(caller, "documentDownload:0", null, e); return #err(e) };
+      case (#err(e)) { auditErr(caller, actPrefix # ":0", null, e); return #err(e) };
       case (#ok) {};
     };
-    // SEC-INV-2: Staff or higher
+    // SEC-INV-2: Staff or higher (D8: identical gate for View and Download)
     switch (requireRole(caller, #Staff)) {
-      case (#err(e)) { auditErr(caller, "documentDownload:0", null, e); return #err(e) };
+      case (#err(e)) { auditErr(caller, actPrefix # ":0", null, e); return #err(e) };
       case (#ok) {};
     };
     let version = switch (MutMap.get(documentVersions, Nat.compare, versionId)) {
       case null {
         let e = "version " # Nat.toText(versionId) # " not found";
-        auditErr(caller, "documentDownload:0", null, e);
+        auditErr(caller, actPrefix # ":0", null, e);
         return #err(e);
       };
       case (?v) v;
@@ -1528,27 +1534,27 @@ shared(installer) persistent actor class ThePractice(
     let doc = switch (MutMap.get(documents, Nat.compare, version.documentId)) {
       case null {
         let e = "document " # Nat.toText(version.documentId) # " not found";
-        auditErr(caller, "documentDownload:" # Nat.toText(version.documentId), null, e);
+        auditErr(caller, actPrefix # ":" # Nat.toText(version.documentId), null, e);
         return #err(e);
       };
       case (?d) d;
     };
     if (doc.status != #Active) {
       let e = "document " # Nat.toText(doc.id) # " is not active";
-      auditErr(caller, "documentDownload:" # Nat.toText(doc.id), null, e);
+      auditErr(caller, actPrefix # ":" # Nat.toText(doc.id), null, e);
       return #err(e);
     };
-    // For downloads: matter only needs to exist — any status including #Archived is readable
+    // For view/download: matter only needs to exist — any status including #Archived is readable
     switch (MutMap.get(matters, Nat.compare, doc.matterId)) {
       case null {
         let e = "matter " # Nat.toText(doc.matterId) # " not found";
-        auditErr(caller, "documentDownload:" # Nat.toText(doc.id), null, e);
+        auditErr(caller, actPrefix # ":" # Nat.toText(doc.id), null, e);
         return #err(e);
       };
       case (?_) {};
     };
-    // SEC-INV-11: exactly one audit entry; action encodes documentId (target field has no Nat slot)
-    auditOk(caller, "documentDownload:" # Nat.toText(doc.id), null);
+    // SEC-INV-11: exactly one audit entry per call
+    auditOk(caller, actPrefix # ":" # Nat.toText(doc.id), null);
     #ok({
       documentId = doc.id;
       sizeBytes = version.sizeBytes;
@@ -2355,21 +2361,26 @@ shared(installer) persistent actor class ThePractice(
   // ── Firm Library — Download flow ──────────────────────────────────────────
   // UPDATE (not query) — must emit audit entry. Chunk bytes via getLibraryChunk query.
   // SEC-INV-15: #Active and #Archived allowed; #Deleted rejected.
+  // D1/D8: action param switches audit string (libraryItem.view vs library.download);
+  //        role gate is identical for both actions.
 
   public shared ({ caller }) func prepareLibraryDownload(
-    versionId : Nat
+    versionId : Nat,
+    action : FileAccessKind,
   ) : async Result.Result<{ itemId : Nat; versionId : Nat; chunkCount : Nat; contentType : Text; sizeBytes : Nat; filename : Text; sha256 : Blob }, Text> {
-    switch (Auth.requireAuthenticated(caller)) { case (#err(e)) { auditErr(caller, "library.download:0:0", null, e); return #err(e) }; case (#ok) {} };
-    switch (requireRole(caller, #Staff)) { case (#err(e)) { auditErr(caller, "library.download:0:0", null, e); return #err(e) }; case (#ok) {} };
+    let actPrefix = switch (action) { case (#View) "libraryItem.view"; case (#Download) "library.download" };
+    switch (Auth.requireAuthenticated(caller)) { case (#err(e)) { auditErr(caller, actPrefix # ":0:0", null, e); return #err(e) }; case (#ok) {} };
+    // D8: identical role gate for View and Download
+    switch (requireRole(caller, #Staff)) { case (#err(e)) { auditErr(caller, actPrefix # ":0:0", null, e); return #err(e) }; case (#ok) {} };
     let version = switch (lookupLibraryVersion(versionId)) {
-      case (#err(e)) { auditErr(caller, "library.download:0:0", null, e); return #err(e) };
+      case (#err(e)) { auditErr(caller, actPrefix # ":0:0", null, e); return #err(e) };
       case (#ok(v)) v;
     };
     let item = switch (lookupLibraryItemReadable(version.itemId)) {
-      case (#err(e)) { auditErr(caller, "library.download:0:" # Nat.toText(versionId), null, e); return #err(e) };
+      case (#err(e)) { auditErr(caller, actPrefix # ":0:" # Nat.toText(versionId), null, e); return #err(e) };
       case (#ok(i)) i;
     };
-    let actStr = "library.download:" # Nat.toText(item.id) # ":" # Nat.toText(versionId);
+    let actStr = actPrefix # ":" # Nat.toText(item.id) # ":" # Nat.toText(versionId);
     auditOk(caller, actStr, null);
     #ok({
       itemId = item.id; versionId;

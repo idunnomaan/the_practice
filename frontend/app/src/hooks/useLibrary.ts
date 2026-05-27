@@ -1,5 +1,6 @@
 import { useState, useCallback } from "react";
 import { useAuth } from "../auth/useAuth";
+import { FileAccessKind } from "../backend/api/backend";
 import type {
   Folder,
   FolderListing,
@@ -87,7 +88,7 @@ export function useLibrary() {
   const download = useCallback(async (item: LibraryItem) => {
     if (!actor) return;
 
-    const prepResult = await actor.prepareLibraryDownload(item.currentVersionId);
+    const prepResult = await actor.prepareLibraryDownload(item.currentVersionId, FileAccessKind.Download);
     if (prepResult.__kind__ === "err") throw new Error(prepResult.err);
     const { chunkCount, filename, contentType } = prepResult.ok;
     const parts: Uint8Array[] = [];

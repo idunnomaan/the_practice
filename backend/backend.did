@@ -103,8 +103,10 @@ type ThePractice =
    mattersByStatus: () -> (MatterStatusCounts) query;
    moveFolder: (folderId: nat, newParentId: opt nat) -> (Result);
    moveLibraryItem: (itemId: nat, newFolderId: opt nat) -> (Result);
-   prepareDocumentDownload: (versionId: nat) -> (Result_4);
-   prepareLibraryDownload: (versionId: nat) -> (Result_3);
+   prepareDocumentDownload: (versionId: nat, action: FileAccessKind) ->
+    (Result_4);
+   prepareLibraryDownload: (versionId: nat, action: FileAccessKind) ->
+    (Result_3);
    putMatterOnHold: (id: nat) -> (Result);
    reactivateClient: (id: nat) -> (Result);
    readAuditEntries: (after: nat, limit: nat) -> (Result_2);
@@ -327,6 +329,11 @@ type Folder =
    id: nat;
    name: text;
    parentId: opt nat;
+ };
+type FileAccessKind = 
+ variant {
+   Download;
+   View;
  };
 type ExportManifest = 
  record {

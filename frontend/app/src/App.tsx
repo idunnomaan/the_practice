@@ -1,3 +1,4 @@
+import { useState } from "react";
 import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
 import "./styles/theme.css";
 import { AuthProvider } from "./auth/AuthContext";
@@ -15,9 +16,21 @@ import UsersPage from "./pages/UsersPage";
 import AuditPage from "./pages/AuditPage";
 import LibraryPage from "./pages/LibraryPage";
 import AdminSettingsPage from "./pages/AdminSettingsPage";
+import FileViewerModal from "./components/FileViewerModal";
+import { FileViewerContext, type FileViewerSource } from "./state/fileViewerStore";
 
 export default function App() {
+  const [viewerState, setViewerState] = useState<{ open: boolean; source: FileViewerSource | null }>({
+    open: false, source: null,
+  });
+  const fileViewerCtx = {
+    state: viewerState,
+    openViewer: (source: FileViewerSource) => setViewerState({ open: true, source }),
+    closeViewer: () => setViewerState(s => ({ ...s, open: false })),
+  };
+
   return (
+    <FileViewerContext.Provider value={fileViewerCtx}>
     <AuthProvider>
       <BrowserRouter>
         <Routes>
@@ -39,6 +52,8 @@ export default function App() {
           </Route>
         </Routes>
       </BrowserRouter>
+      <FileViewerModal />
     </AuthProvider>
+    </FileViewerContext.Provider>
   );
 }
