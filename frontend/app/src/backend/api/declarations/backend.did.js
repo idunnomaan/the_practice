@@ -59,12 +59,12 @@ export const idlFactory = ({ IDL }) => {
     'operationsPrincipal' : IDL.Opt(IDL.Principal),
     'totalDocuments' : IDL.Nat,
   });
-  const Result_7 = IDL.Variant({ 'ok' : ExportManifest, 'err' : IDL.Text });
+  const Result_8 = IDL.Variant({ 'ok' : ExportManifest, 'err' : IDL.Text });
   const DocumentStatusCounts = IDL.Record({
     'deleted' : IDL.Nat,
     'active' : IDL.Nat,
   });
-  const Result_6 = IDL.Variant({
+  const Result_7 = IDL.Variant({
     'ok' : IDL.Record({
       'itemId' : IDL.Nat,
       'versionId' : IDL.Nat,
@@ -72,7 +72,7 @@ export const idlFactory = ({ IDL }) => {
     }),
     'err' : IDL.Text,
   });
-  const Result_5 = IDL.Variant({
+  const Result_6 = IDL.Variant({
     'ok' : IDL.Record({
       'versionId' : IDL.Nat,
       'sha256' : IDL.Vec(IDL.Nat8),
@@ -227,6 +227,10 @@ export const idlFactory = ({ IDL }) => {
     'onHold' : IDL.Nat,
     'archived' : IDL.Nat,
   });
+  const Result_5 = IDL.Variant({
+    'ok' : IDL.Record({ 'skipped' : IDL.Nat, 'migrated' : IDL.Nat }),
+    'err' : IDL.Text,
+  });
   const FileAccessKind = IDL.Variant({
     'View' : IDL.Null,
     'Download' : IDL.Null,
@@ -336,7 +340,7 @@ export const idlFactory = ({ IDL }) => {
         [Result_1],
         [],
       ),
-    'createExportManifest' : IDL.Func([], [Result_7], []),
+    'createExportManifest' : IDL.Func([], [Result_8], []),
     'createFolder' : IDL.Func([IDL.Text, IDL.Opt(IDL.Nat)], [Result_1], []),
     'createMatter' : IDL.Func(
         [IDL.Text, IDL.Text, IDL.Nat, IDL.Opt(IDL.Principal), IDL.Text],
@@ -349,8 +353,8 @@ export const idlFactory = ({ IDL }) => {
     'deleteFolder' : IDL.Func([IDL.Nat], [Result], []),
     'deleteLibraryItem' : IDL.Func([IDL.Nat], [Result], []),
     'documentsByStatus' : IDL.Func([], [DocumentStatusCounts], ['query']),
-    'finalizeLibraryUpload' : IDL.Func([IDL.Nat], [Result_6], []),
-    'finalizeUpload' : IDL.Func([IDL.Nat], [Result_5], []),
+    'finalizeLibraryUpload' : IDL.Func([IDL.Nat], [Result_7], []),
+    'finalizeUpload' : IDL.Func([IDL.Nat], [Result_6], []),
     'fulfillTopUpRequest' : IDL.Func([IDL.Nat], [Result], []),
     'getChunk' : IDL.Func(
         [IDL.Nat, IDL.Nat],
@@ -444,6 +448,7 @@ export const idlFactory = ({ IDL }) => {
       ),
     'listVersions' : IDL.Func([IDL.Nat], [IDL.Vec(DocumentVersion)], ['query']),
     'mattersByStatus' : IDL.Func([], [MatterStatusCounts], ['query']),
+    'migrateLibraryVersions' : IDL.Func([], [Result_5], []),
     'moveFolder' : IDL.Func([IDL.Nat, IDL.Opt(IDL.Nat)], [Result], []),
     'moveLibraryItem' : IDL.Func([IDL.Nat, IDL.Opt(IDL.Nat)], [Result], []),
     'prepareDocumentDownload' : IDL.Func(

@@ -231,7 +231,9 @@ export type Result_4 = {
     }
   } |
   { 'err' : string };
-export type Result_5 = {
+export type Result_5 = { 'ok' : { 'skipped' : bigint, 'migrated' : bigint } } |
+  { 'err' : string };
+export type Result_6 = {
     'ok' : {
       'versionId' : bigint,
       'sha256' : Uint8Array,
@@ -239,11 +241,11 @@ export type Result_5 = {
     }
   } |
   { 'err' : string };
-export type Result_6 = {
+export type Result_7 = {
     'ok' : { 'itemId' : bigint, 'versionId' : bigint, 'sha256' : Uint8Array }
   } |
   { 'err' : string };
-export type Result_7 = { 'ok' : ExportManifest } |
+export type Result_8 = { 'ok' : ExportManifest } |
   { 'err' : string };
 export type Role = { 'Staff' : null } |
   { 'Associate' : null } |
@@ -265,7 +267,7 @@ export interface ThePractice {
     [string, ClientType, [] | [string], [] | [string], [] | [string], string],
     Result_1
   >,
-  'createExportManifest' : ActorMethod<[], Result_7>,
+  'createExportManifest' : ActorMethod<[], Result_8>,
   'createFolder' : ActorMethod<[string, [] | [bigint]], Result_1>,
   'createMatter' : ActorMethod<
     [string, string, bigint, [] | [Principal], string],
@@ -277,8 +279,8 @@ export interface ThePractice {
   'deleteFolder' : ActorMethod<[bigint], Result>,
   'deleteLibraryItem' : ActorMethod<[bigint], Result>,
   'documentsByStatus' : ActorMethod<[], DocumentStatusCounts>,
-  'finalizeLibraryUpload' : ActorMethod<[bigint], Result_6>,
-  'finalizeUpload' : ActorMethod<[bigint], Result_5>,
+  'finalizeLibraryUpload' : ActorMethod<[bigint], Result_7>,
+  'finalizeUpload' : ActorMethod<[bigint], Result_6>,
   'fulfillTopUpRequest' : ActorMethod<[bigint], Result>,
   'getChunk' : ActorMethod<[bigint, bigint], [] | [Uint8Array]>,
   'getClient' : ActorMethod<[bigint], [] | [Client]>,
@@ -331,6 +333,7 @@ export interface ThePractice {
   'listUsers' : ActorMethod<[], Array<[Principal, UserRecord]>>,
   'listVersions' : ActorMethod<[bigint], Array<DocumentVersion>>,
   'mattersByStatus' : ActorMethod<[], MatterStatusCounts>,
+  'migrateLibraryVersions' : ActorMethod<[], Result_5>,
   'moveFolder' : ActorMethod<[bigint, [] | [bigint]], Result>,
   'moveLibraryItem' : ActorMethod<[bigint, [] | [bigint]], Result>,
   'prepareDocumentDownload' : ActorMethod<[bigint, FileAccessKind], Result_4>,

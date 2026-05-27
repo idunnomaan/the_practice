@@ -43,7 +43,7 @@ type ThePractice =
    closeMatter: (id: nat) -> (Result);
    createClient: (name: text, clientType: ClientType, primaryEmail: opt text,
     primaryPhone: opt text, identifier: opt text, notes: text) -> (Result_1);
-   createExportManifest: () -> (Result_7);
+   createExportManifest: () -> (Result_8);
    createFolder: (name: text, parentId: opt nat) -> (Result_1);
    createMatter: (title: text, matterType: text, clientId: nat,
     assignedPartner: opt principal, description: text) -> (Result_1);
@@ -53,8 +53,8 @@ type ThePractice =
    deleteFolder: (folderId: nat) -> (Result);
    deleteLibraryItem: (itemId: nat) -> (Result);
    documentsByStatus: () -> (DocumentStatusCounts) query;
-   finalizeLibraryUpload: (sessionId: nat) -> (Result_6);
-   finalizeUpload: (sessionId: nat) -> (Result_5);
+   finalizeLibraryUpload: (sessionId: nat) -> (Result_7);
+   finalizeUpload: (sessionId: nat) -> (Result_6);
    fulfillTopUpRequest: (id: nat) -> (Result);
    getChunk: (versionId: nat, chunkIndex: nat) -> (opt blob) query;
    getClient: (id: nat) -> (opt Client) query;
@@ -101,6 +101,7 @@ type ThePractice =
                          }) query;
    listVersions: (documentId: nat) -> (vec DocumentVersion) query;
    mattersByStatus: () -> (MatterStatusCounts) query;
+   migrateLibraryVersions: () -> (Result_5);
    moveFolder: (folderId: nat, newParentId: opt nat) -> (Result);
    moveLibraryItem: (itemId: nat, newFolderId: opt nat) -> (Result);
    prepareDocumentDownload: (versionId: nat, action: FileAccessKind) ->
@@ -154,12 +155,12 @@ type Role =
    Partner;
    Staff;
  };
-type Result_7 = 
+type Result_8 = 
  variant {
    err: text;
    ok: ExportManifest;
  };
-type Result_6 = 
+type Result_7 = 
  variant {
    err: text;
    ok: record {
@@ -168,13 +169,21 @@ type Result_6 =
          versionId: nat;
        };
  };
-type Result_5 = 
+type Result_6 = 
  variant {
    err: text;
    ok: record {
          documentId: nat;
          sha256: blob;
          versionId: nat;
+       };
+ };
+type Result_5 = 
+ variant {
+   err: text;
+   ok: record {
+         migrated: nat;
+         skipped: nat;
        };
  };
 type Result_4 = 

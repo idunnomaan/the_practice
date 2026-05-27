@@ -123,6 +123,10 @@ shared(installer) persistent actor class ThePractice(
   let libraryVersions = MutMap.empty<Nat, LibraryVersion>();
   let libraryVersionsByItem = MutMap.empty<Nat, [Nat]>(); // itemId → ordered list of versionIds
   let libraryUploadSessions = MutMap.empty<Nat, LibraryUploadSession>(); // separate from uploadSessions (Q10)
+  // Per-version chunk store: versionId → (chunkIndex → Blob).
+  // Populated by finalizeLibraryUpload (post-fix) and migrateLibraryVersions.
+  // Versions uploaded before this fix have no entry here; getLibraryChunk falls back to blob iteration.
+  let libraryVersionChunks = MutMap.empty<Nat, Map.Map<Nat, Blob>>();
   var nextFolderId : Nat = 1;
   var nextLibraryItemId : Nat = 1;
   var nextLibraryVersionId : Nat = 1;
@@ -1798,19 +1802,26 @@ shared(installer) persistent actor class ThePractice(
             let count = DocumentModule.expectedChunkCount(version.sizeBytes);
             if (chunkIndex >= count) return null;
             let (startByte, endByte) = DocumentModule.chunkRange(chunkIndex, version.sizeBytes);
-            let chunkSize = endByte - startByte;
-            let result = VarArray.repeat<Nat8>(0, chunkSize);
-            var bytePos : Nat = 0;
-            var writePos : Nat = 0;
-            label sliceLoop for (b in version.blob.values()) {
-              if (bytePos >= endByte) break sliceLoop;
-              if (bytePos >= startByte) {
-                result[writePos] := b;
-                writePos += 1;
+            // Fast path: chunk stored separately (post-fix uploads).
+            switch (MutMap.get(libraryVersionChunks, Nat.compare, versionId)) {
+              case (?chunks) Map.get(chunks, Nat.compare, chunkIndex);
+              case null {
+                // Legacy path: pre-fix upload stored as monolithic blob; iterate to slice.
+                let chunkSize = endByte - startByte;
+                let result = VarArray.repeat<Nat8>(0, chunkSize);
+                var bytePos : Nat = 0;
+                var writePos : Nat = 0;
+                label sliceLoop for (b in version.blob.values()) {
+                  if (bytePos >= endByte) break sliceLoop;
+                  if (bytePos >= startByte) {
+                    result[writePos] := b;
+                    writePos += 1;
+                  };
+                  bytePos += 1;
+                };
+                ?Blob.fromVarArray(result)
               };
-              bytePos += 1;
-            };
-            ?Blob.fromVarArray(result)
+            }
           };
         };
       };
@@ -2124,9 +2135,10 @@ shared(installer) persistent actor class ThePractice(
         MutMap.add(libraryVersions, Nat.compare, vid, {
           versionId = vid; itemId = iid; versionNumber = 1;
           filename = session.filename; contentType = session.contentType;
-          sizeBytes = session.totalSizeBytes; blob = assembledBlob; sha256;
+          sizeBytes = session.totalSizeBytes; blob = ("" : Blob); sha256;
           uploadedAt = now; uploadedBy = caller; uploadNotes = session.uploadNotes;
         });
+        MutMap.add(libraryVersionChunks, Nat.compare, vid, session.chunks);
         MutMap.add(libraryItems, Nat.compare, iid, {
           id = iid; name = session.name; folderId = session.folderId;
           tags = session.tags; description = session.description;
@@ -2151,9 +2163,10 @@ shared(installer) persistent actor class ThePractice(
         MutMap.add(libraryVersions, Nat.compare, vid, {
           versionId = vid; itemId = replaceId; versionNumber;
           filename = session.filename; contentType = session.contentType;
-          sizeBytes = session.totalSizeBytes; blob = assembledBlob; sha256;
+          sizeBytes = session.totalSizeBytes; blob = ("" : Blob); sha256;
           uploadedAt = now; uploadedBy = caller; uploadNotes = session.uploadNotes;
         });
+        MutMap.add(libraryVersionChunks, Nat.compare, vid, session.chunks);
         MutMap.add(libraryItems, Nat.compare, replaceId, { item with currentVersionId = vid });
         appendVersionToLibraryItem(replaceId, vid);
         (replaceId, vid)
@@ -2164,6 +2177,47 @@ shared(installer) persistent actor class ThePractice(
     MutMap.remove(libraryUploadSessions, Nat.compare, sessionId);
     auditOk(caller, "library.upload:" # Nat.toText(itemId), null);
     #ok({ itemId; versionId; sha256 })
+  };
+
+  // ONE-SHOT MIGRATION — call once after upgrading from a pre-fix build.
+  // Splits each LibraryVersion's monolithic blob into per-chunk entries in libraryVersionChunks.
+  // Single pass per blob (O(N_bytes) not O(N_chunks * N_bytes)). Idempotent: blob="" entries skipped.
+  // Partner-only; not audited (read-only from the canister state perspective — no user-visible data changes).
+  public shared ({ caller }) func migrateLibraryVersions() : async Result.Result<{ migrated : Nat; skipped : Nat }, Text> {
+    switch (Auth.requireAuthenticated(caller)) { case (#err(e)) return #err(e); case (#ok) {} };
+    switch (requireRole(caller, #Partner)) { case (#err(e)) return #err(e); case (#ok) {} };
+    var migrated : Nat = 0;
+    var skipped : Nat = 0;
+    for ((vid, version) in MutMap.entries(libraryVersions)) {
+      if (version.blob.size() == 0) {
+        skipped += 1;
+      } else {
+        let chunkCount = DocumentModule.expectedChunkCount(version.sizeBytes);
+        // Allocate one buffer per chunk — all up front to enable single-pass write.
+        let buffers = Array.tabulate<[var Nat8]>(chunkCount, func ci {
+          let (startByte, endByte) = DocumentModule.chunkRange(ci, version.sizeBytes);
+          VarArray.repeat<Nat8>(0, endByte - startByte)
+        });
+        // Single pass: write each byte directly into its chunk buffer.
+        var bytePos : Nat = 0;
+        for (b in version.blob.values()) {
+          let ci = bytePos / DocumentModule.CHUNK_SIZE;
+          buffers[ci][bytePos - ci * DocumentModule.CHUNK_SIZE] := b;
+          bytePos += 1;
+        };
+        // Build immutable chunk Map from buffers.
+        var chunkMap = Map.empty<Nat, Blob>();
+        var ci2 : Nat = 0;
+        while (ci2 < chunkCount) {
+          chunkMap := Map.add(chunkMap, Nat.compare, ci2, Blob.fromVarArray(buffers[ci2]));
+          ci2 += 1;
+        };
+        MutMap.add(libraryVersionChunks, Nat.compare, vid, chunkMap);
+        MutMap.add(libraryVersions, Nat.compare, vid, { version with blob = ("" : Blob) });
+        migrated += 1;
+      };
+    };
+    #ok({ migrated; skipped })
   };
 
   public shared ({ caller }) func abandonLibraryUpload(sessionId : Nat) : async Result.Result<(), Text> {
