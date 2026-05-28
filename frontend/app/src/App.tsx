@@ -16,6 +16,7 @@ import UsersPage from "./pages/UsersPage";
 import AuditPage from "./pages/AuditPage";
 import LibraryPage from "./pages/LibraryPage";
 import AdminSettingsPage from "./pages/AdminSettingsPage";
+import CompliancePage from "./pages/CompliancePage";
 import FileViewerModal from "./components/FileViewerModal";
 import { FileViewerContext, type FileViewerSource } from "./state/fileViewerStore";
 
@@ -48,6 +49,7 @@ export default function App() {
               <Route path="/users" element={<PartnerOnly><UsersPage /></PartnerOnly>} />
               <Route path="/audit" element={<PartnerOnly><AuditPage /></PartnerOnly>} />
               <Route path="/admin" element={<AdminSettingsPage />} />
+              <Route path="/compliance" element={<CompliancePage />} />
             </Route>
           </Route>
         </Routes>

@@ -1,4 +1,17 @@
-type UserRecord = 
+type CertificatePayload =
+ record {
+   auditEntryCount: nat;
+   canisterId: text;
+   certificateId: text;
+   issuedAt: int;
+   lastAuditTimestamp: int;
+   masterController: text;
+   publicKey: blob;
+   signature: blob;
+   unauthorizedAttempts: nat;
+   validUntil: int;
+ };
+type UserRecord =
  record {
    addedAt: Time;
    addedBy: principal;
@@ -24,10 +37,12 @@ type TopUpRequestRecord =
    requestedTrillionCycles: nat;
    status: TopUpRequestStatus;
  };
+type Result_9 = variant { ok: CertificatePayload; err: text };
 type Time = int;
-type ThePractice = 
+type ThePractice =
  service {
    abandonLibraryUpload: (sessionId: nat) -> (Result);
+   generateComplianceCertificate: () -> (Result_9);
    abandonUpload: (sessionId: nat) -> (Result);
    addLibraryItemTag: (itemId: nat, tag: text) -> (Result);
    addUser: (p: principal, role: Role) -> (Result);

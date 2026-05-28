@@ -86,6 +86,7 @@ export interface AuthContextValue {
   actor: Backend | null;
   identity: DelegationIdentity | null;
   isMasterController: boolean;
+  isOperationsPrincipal: boolean;
   login: () => Promise<void>;
   logout: () => Promise<void>;
   isLoading: boolean;
@@ -101,6 +102,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [actor, setActor] = useState<Backend | null>(null);
   const [identity, setIdentity] = useState<DelegationIdentity | null>(null);
   const [isMasterController, setIsMasterController] = useState(false);
+  const [isOperationsPrincipal, setIsOperationsPrincipal] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
   const [noAccess, setNoAccess] = useState(false);
 
@@ -120,14 +122,19 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       return;
     }
 
-    const masterPrincipal = await backend.getMasterController();
+    const [masterPrincipal, opsPrincipal] = await Promise.all([
+      backend.getMasterController(),
+      backend.getOperationsPrincipal(),
+    ]);
     const isMaster = principalText === masterPrincipal.toText();
+    const isOps = opsPrincipal !== null && principalText === opsPrincipal.toText();
 
     setActor(backend);
     setPrincipal(principalText);
     setRole(roleResult);
     setIdentity(ident);
     setIsMasterController(isMaster);
+    setIsOperationsPrincipal(isOps);
     setIsAuthenticated(true);
     setNoAccess(false);
   }
@@ -173,11 +180,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     setActor(null);
     setIdentity(null);
     setIsMasterController(false);
+    setIsOperationsPrincipal(false);
     setNoAccess(false);
   }
 
   return (
-    <AuthContext.Provider value={{ isAuthenticated, principal, role, actor, identity, isMasterController, login, logout, isLoading, noAccess }}>
+    <AuthContext.Provider value={{ isAuthenticated, principal, role, actor, identity, isMasterController, isOperationsPrincipal, login, logout, isLoading, noAccess }}>
       {children}
     </AuthContext.Provider>
   );

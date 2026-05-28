@@ -20,6 +20,18 @@ export interface AuditEntry {
 }
 export type AuditOutcome = { 'ok' : null } |
   { 'err' : string };
+export interface CertificatePayload {
+  'signature' : Uint8Array,
+  'auditEntryCount' : bigint,
+  'publicKey' : Uint8Array,
+  'certificateId' : string,
+  'lastAuditTimestamp' : bigint,
+  'masterController' : string,
+  'issuedAt' : bigint,
+  'unauthorizedAttempts' : bigint,
+  'canisterId' : string,
+  'validUntil' : bigint,
+}
 export interface Client {
   'id' : bigint,
   'status' : ClientStatus,
@@ -247,6 +259,8 @@ export type Result_7 = {
   { 'err' : string };
 export type Result_8 = { 'ok' : ExportManifest } |
   { 'err' : string };
+export type Result_9 = { 'ok' : CertificatePayload } |
+  { 'err' : string };
 export type Role = { 'Staff' : null } |
   { 'Associate' : null } |
   { 'Partner' : null };
@@ -282,6 +296,7 @@ export interface ThePractice {
   'finalizeLibraryUpload' : ActorMethod<[bigint], Result_7>,
   'finalizeUpload' : ActorMethod<[bigint], Result_6>,
   'fulfillTopUpRequest' : ActorMethod<[bigint], Result>,
+  'generateComplianceCertificate' : ActorMethod<[], Result_9>,
   'getChunk' : ActorMethod<[bigint, bigint], [] | [Uint8Array]>,
   'getClient' : ActorMethod<[bigint], [] | [Client]>,
   'getClientCount' : ActorMethod<[], bigint>,

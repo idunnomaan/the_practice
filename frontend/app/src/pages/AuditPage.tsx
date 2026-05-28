@@ -29,6 +29,7 @@ function fmtAction(raw: string): string {
     "document.download": "Document downloaded",
     "libraryItem.view": "Library item viewed",
     "library.download": "Library item downloaded",
+    "compliance.certificate.generate": "Compliance certificate generated",
   };
   // Handle dynamic keys like "library.upload:1", "library.upload:2", …
   if (/^library\.upload:\d+$/.test(raw)) return "Library file chunk uploaded";

@@ -80,6 +80,19 @@ export const idlFactory = ({ IDL }) => {
     }),
     'err' : IDL.Text,
   });
+  const CertificatePayload = IDL.Record({
+    'signature' : IDL.Vec(IDL.Nat8),
+    'auditEntryCount' : IDL.Nat,
+    'publicKey' : IDL.Vec(IDL.Nat8),
+    'certificateId' : IDL.Text,
+    'lastAuditTimestamp' : IDL.Int,
+    'masterController' : IDL.Text,
+    'issuedAt' : IDL.Int,
+    'unauthorizedAttempts' : IDL.Nat,
+    'canisterId' : IDL.Text,
+    'validUntil' : IDL.Int,
+  });
+  const Result_9 = IDL.Variant({ 'ok' : CertificatePayload, 'err' : IDL.Text });
   const ClientStatus = IDL.Variant({
     'Inactive' : IDL.Null,
     'Active' : IDL.Null,
@@ -356,6 +369,7 @@ export const idlFactory = ({ IDL }) => {
     'finalizeLibraryUpload' : IDL.Func([IDL.Nat], [Result_7], []),
     'finalizeUpload' : IDL.Func([IDL.Nat], [Result_6], []),
     'fulfillTopUpRequest' : IDL.Func([IDL.Nat], [Result], []),
+    'generateComplianceCertificate' : IDL.Func([], [Result_9], []),
     'getChunk' : IDL.Func(
         [IDL.Nat, IDL.Nat],
         [IDL.Opt(IDL.Vec(IDL.Nat8))],

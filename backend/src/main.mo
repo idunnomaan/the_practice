@@ -2,6 +2,7 @@ import Principal "mo:core/Principal";
 import Map "mo:core/pure/Map";
 import MutMap "mo:core/Map";
 import Nat "mo:core/Nat";
+import Int "mo:core/Int";
 import Text "mo:core/Text";
 import Time "mo:core/Time";
 import Iter "mo:core/Iter";
@@ -2792,6 +2793,102 @@ shared(installer) persistent actor class ThePractice(
 
   public query func getCycleBalance() : async Nat {
     Cycles.balance()
+  };
+
+  // ── Compliance Certificate ────────────────────────────────────────────────
+  // tECDSA signing via IC management canister.
+  // Access: master controller OR operations principal.
+
+  // IC management canister — minimal interface for tECDSA operations.
+  let IC_MGMT = actor "aaaaa-aa" : actor {
+    ecdsa_public_key : ({
+      canister_id : ?Principal;
+      derivation_path : [Blob];
+      key_id : { curve : { #secp256k1 }; name : Text };
+    }) -> async ({ public_key : Blob; chain_code : Blob });
+    sign_with_ecdsa : ({
+      message_hash : Blob;
+      derivation_path : [Blob];
+      key_id : { curve : { #secp256k1 }; name : Text };
+    }) -> async ({ signature : Blob });
+  };
+
+  type CertificatePayload = {
+    certificateId : Text;
+    issuedAt : Int;
+    validUntil : Int;
+    canisterId : Text;
+    masterController : Text;
+    auditEntryCount : Nat;
+    lastAuditTimestamp : Int;
+    unauthorizedAttempts : Nat;
+    signature : Blob;
+    publicKey : Blob;
+  };
+
+  public shared ({ caller }) func generateComplianceCertificate() : async Result.Result<CertificatePayload, Text> {
+    switch (Auth.requireAuthenticated(caller)) {
+      case (#err(e)) { auditErr(caller, "compliance.certificate.generate", null, e); return #err(e) };
+      case (#ok) {};
+    };
+    switch (requireOperationsOrMaster(caller)) {
+      case (#err(e)) { auditErr(caller, "compliance.certificate.generate", null, e); return #err(e) };
+      case (#ok) {};
+    };
+
+    let issuedAt = Time.now();
+    // 365 days in nanoseconds
+    let validUntil = issuedAt + 365 * 24 * 60 * 60 * 1_000_000_000;
+    let certId = "PDPA-" # Int.toText(issuedAt);
+    let canisterIdText = "3gjvg-naaaa-aaaaj-qr7kq-cai";
+    let mcPrincipal = Principal.toText(masterController);
+
+    // Scan audit log for metrics — O(N) over all entries
+    var auditCount : Nat = 0;
+    var lastTs : Int = 0;
+    var unauthorizedCount : Nat = 0;
+    for ((_, entry) in MutMap.entriesFrom(auditLog, Nat.compare, 0)) {
+      auditCount += 1;
+      if (entry.timestamp > lastTs) { lastTs := entry.timestamp };
+      switch (entry.outcome) {
+        case (#err(_)) { unauthorizedCount += 1 };
+        case (#ok) {};
+      };
+    };
+
+    // Canonical message — field order is fixed; changing it breaks signature verification
+    let message : Text = "PDPA-CERT|" # certId # "|" # Int.toText(issuedAt) # "|" # canisterIdText # "|" # mcPrincipal # "|" # Nat.toText(auditCount) # "|" # Int.toText(lastTs);
+    let messageHash : Blob = Sha256.fromBlob(#sha256, Text.encodeUtf8(message));
+
+    // Fetch canister public key (does not consume cycles)
+    let { public_key } = await IC_MGMT.ecdsa_public_key({
+      canister_id = null; // null = this canister
+      derivation_path = [];
+      // TODO: switch key name to "dfx_test_key" for local replica testing; use "key_1" for mainnet
+      key_id = { curve = #secp256k1; name = "key_1" };
+    });
+
+    // Sign — requires ~25B cycles on mainnet; (with cycles = n) attaches them to this call
+    let { signature } = await (with cycles = 25_000_000_000) IC_MGMT.sign_with_ecdsa({
+      message_hash = messageHash;
+      derivation_path = [];
+      // TODO: switch key name to "dfx_test_key" for local replica testing; use "key_1" for mainnet
+      key_id = { curve = #secp256k1; name = "key_1" };
+    });
+
+    auditOk(caller, "compliance.certificate.generate", null);
+    #ok({
+      certificateId = certId;
+      issuedAt;
+      validUntil;
+      canisterId = canisterIdText;
+      masterController = mcPrincipal;
+      auditEntryCount = auditCount;
+      lastAuditTimestamp = lastTs;
+      unauthorizedAttempts = unauthorizedCount;
+      signature;
+      publicKey = public_key;
+    })
   };
 
   // ── L5 Audit read ─────────────────────────────────────────────────────────

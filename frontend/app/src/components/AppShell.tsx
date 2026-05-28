@@ -4,7 +4,7 @@ import { useAuth } from "../auth/useAuth";
 import { Role } from "../backend/api/backend";
 
 export default function AppShell() {
-  const { principal, role, logout, isMasterController } = useAuth();
+  const { principal, role, logout, isMasterController, isOperationsPrincipal } = useAuth();
   const location = useLocation();
   const [dark, setDark] = useState(() => localStorage.getItem("tp-dark") === "1");
 
@@ -45,10 +45,13 @@ export default function AppShell() {
               <NavLink to="/audit" icon="ti-shield-check" label="Audit Log"  active={isActive("/audit")} />
             </>
           )}
-          {isMasterController && (
+          {(isMasterController || isOperationsPrincipal) && (
             <>
               <div className="nav-section">System</div>
-              <NavLink to="/admin" icon="ti-settings" label="Admin Settings" active={isActive("/admin")} />
+              {isMasterController && (
+                <NavLink to="/admin" icon="ti-settings" label="Admin Settings" active={isActive("/admin")} />
+              )}
+              <NavLink to="/compliance" icon="ti-certificate" label="Compliance" active={isActive("/compliance")} />
             </>
           )}
 

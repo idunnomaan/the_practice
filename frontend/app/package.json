@@ -13,6 +13,7 @@
   "dependencies": {
     "@icp-sdk/auth": "^7.0.0",
     "@icp-sdk/core": "~5.2.0",
+    "jspdf": "^4.2.1",
     "mammoth": "^1.12.0",
     "react": "~19.1.1",
     "react-dom": "~19.1.1",

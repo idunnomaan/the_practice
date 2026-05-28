@@ -169,6 +169,7 @@ export interface ThePracticeInterface {
     finalizeLibraryUpload(sessionId: bigint): Promise<Result_7>;
     finalizeUpload(sessionId: bigint): Promise<Result_6>;
     fulfillTopUpRequest(id: bigint): Promise<Result>;
+    generateComplianceCertificate(): Promise<Result_9>;
     getChunk(versionId: bigint, chunkIndex: bigint): Promise<Uint8Array | null>;
     getClient(id: bigint): Promise<Client | null>;
     getClientCount(): Promise<bigint>;
@@ -255,6 +256,18 @@ export type Result_4 = {
 export interface DocumentSearchResult {
     currentVersion: DocumentVersion;
     document: Document;
+}
+export interface CertificatePayload {
+    signature: Uint8Array;
+    auditEntryCount: bigint;
+    publicKey: Uint8Array;
+    certificateId: string;
+    lastAuditTimestamp: bigint;
+    masterController: string;
+    issuedAt: bigint;
+    unauthorizedAttempts: bigint;
+    canisterId: string;
+    validUntil: bigint;
 }
 export interface ClientFilter {
     createdBefore?: Time;
@@ -397,6 +410,13 @@ export interface LibraryFilter {
     uploadedBy?: Principal;
     uploadedBefore?: Time;
 }
+export type Result_9 = {
+    __kind__: "ok";
+    ok: CertificatePayload;
+} | {
+    __kind__: "err";
+    err: string;
+};
 export interface Matter {
     id: bigint;
     status: MatterStatus;
@@ -496,7 +516,7 @@ export enum TopUpRequestStatus {
 }
 export interface backendInterface extends ThePracticeInterface {
 }
-import type { AuditEntry as _AuditEntry, AuditOutcome as _AuditOutcome, Client as _Client, ClientFilter as _ClientFilter, ClientStatus as _ClientStatus, ClientType as _ClientType, Document as _Document, DocumentFilter as _DocumentFilter, DocumentSearchResult as _DocumentSearchResult, DocumentStatus as _DocumentStatus, DocumentVersion as _DocumentVersion, ExportManifest as _ExportManifest, FileAccessKind as _FileAccessKind, Folder as _Folder, FolderListing as _FolderListing, FolderScope as _FolderScope, LibraryFilter as _LibraryFilter, LibraryItem as _LibraryItem, LibraryItemSearchResult as _LibraryItemSearchResult, LibraryItemStatus as _LibraryItemStatus, LibraryVersion as _LibraryVersion, Matter as _Matter, MatterFilter as _MatterFilter, MatterStatus as _MatterStatus, Result as _Result, Result_1 as _Result_1, Result_2 as _Result_2, Result_3 as _Result_3, Result_4 as _Result_4, Result_5 as _Result_5, Result_6 as _Result_6, Result_7 as _Result_7, Result_8 as _Result_8, Role as _Role, Time as _Time, TopUpRequestRecord as _TopUpRequestRecord, TopUpRequestStatus as _TopUpRequestStatus, UserRecord as _UserRecord } from "./declarations/backend.did";
+import type { AuditEntry as _AuditEntry, AuditOutcome as _AuditOutcome, CertificatePayload as _CertificatePayload, Client as _Client, ClientFilter as _ClientFilter, ClientStatus as _ClientStatus, ClientType as _ClientType, Document as _Document, DocumentFilter as _DocumentFilter, DocumentSearchResult as _DocumentSearchResult, DocumentStatus as _DocumentStatus, DocumentVersion as _DocumentVersion, ExportManifest as _ExportManifest, FileAccessKind as _FileAccessKind, Folder as _Folder, FolderListing as _FolderListing, FolderScope as _FolderScope, LibraryFilter as _LibraryFilter, LibraryItem as _LibraryItem, LibraryItemSearchResult as _LibraryItemSearchResult, LibraryItemStatus as _LibraryItemStatus, LibraryVersion as _LibraryVersion, Matter as _Matter, MatterFilter as _MatterFilter, MatterStatus as _MatterStatus, Result as _Result, Result_1 as _Result_1, Result_2 as _Result_2, Result_3 as _Result_3, Result_4 as _Result_4, Result_5 as _Result_5, Result_6 as _Result_6, Result_7 as _Result_7, Result_8 as _Result_8, Result_9 as _Result_9, Role as _Role, Time as _Time, TopUpRequestRecord as _TopUpRequestRecord, TopUpRequestStatus as _TopUpRequestStatus, UserRecord as _UserRecord } from "./declarations/backend.did";
 export class Backend implements backendInterface {
     constructor(private actor: ActorSubclass<_SERVICE>){}
     async abandonLibraryUpload(arg0: bigint): Promise<Result> {
@@ -599,13 +619,17 @@ export class Backend implements backendInterface {
         const result = await this.actor.fulfillTopUpRequest(arg0);
         return from_candid_Result_n1(result);
     }
+    async generateComplianceCertificate(): Promise<Result_9> {
+        const result = await this.actor.generateComplianceCertificate();
+        return from_candid_Result_9_n25(result);
+    }
     async getChunk(arg0: bigint, arg1: bigint): Promise<Uint8Array | null> {
         const result = await this.actor.getChunk(arg0, arg1);
-        return from_candid_opt_n25(result);
+        return from_candid_opt_n27(result);
     }
     async getClient(arg0: bigint): Promise<Client | null> {
         const result = await this.actor.getClient(arg0);
-        return from_candid_opt_n26(result);
+        return from_candid_opt_n28(result);
     }
     async getClientCount(): Promise<bigint> {
         const result = await this.actor.getClientCount();
@@ -617,7 +641,7 @@ export class Backend implements backendInterface {
     }
     async getDocument(arg0: bigint): Promise<Document | null> {
         const result = await this.actor.getDocument(arg0);
-        return from_candid_opt_n34(result);
+        return from_candid_opt_n36(result);
     }
     async getDocumentCount(): Promise<bigint> {
         const result = await this.actor.getDocumentCount();
@@ -625,11 +649,11 @@ export class Backend implements backendInterface {
     }
     async getDocumentVersion(arg0: bigint): Promise<DocumentVersion | null> {
         const result = await this.actor.getDocumentVersion(arg0);
-        return from_candid_opt_n39(result);
+        return from_candid_opt_n41(result);
     }
     async getFolder(arg0: bigint): Promise<Folder | null> {
         const result = await this.actor.getFolder(arg0);
-        return from_candid_opt_n40(result);
+        return from_candid_opt_n42(result);
     }
     async getFolderCount(): Promise<bigint> {
         const result = await this.actor.getFolderCount();
@@ -641,11 +665,11 @@ export class Backend implements backendInterface {
     }
     async getLibraryChunk(arg0: bigint, arg1: bigint): Promise<Uint8Array | null> {
         const result = await this.actor.getLibraryChunk(arg0, arg1);
-        return from_candid_opt_n25(result);
+        return from_candid_opt_n27(result);
     }
     async getLibraryItem(arg0: bigint): Promise<LibraryItem | null> {
         const result = await this.actor.getLibraryItem(arg0);
-        return from_candid_opt_n41(result);
+        return from_candid_opt_n43(result);
     }
     async getLibraryItemCount(): Promise<bigint> {
         const result = await this.actor.getLibraryItemCount();
@@ -653,7 +677,7 @@ export class Backend implements backendInterface {
     }
     async getLibraryVersion(arg0: bigint): Promise<LibraryVersion | null> {
         const result = await this.actor.getLibraryVersion(arg0);
-        return from_candid_opt_n46(result);
+        return from_candid_opt_n48(result);
     }
     async getMasterController(): Promise<Principal> {
         const result = await this.actor.getMasterController();
@@ -661,7 +685,7 @@ export class Backend implements backendInterface {
     }
     async getMatter(arg0: bigint): Promise<Matter | null> {
         const result = await this.actor.getMatter(arg0);
-        return from_candid_opt_n47(result);
+        return from_candid_opt_n49(result);
     }
     async getMatterCount(): Promise<bigint> {
         const result = await this.actor.getMatterCount();
@@ -669,7 +693,7 @@ export class Backend implements backendInterface {
     }
     async getMyRole(): Promise<Role | null> {
         const result = await this.actor.getMyRole();
-        return from_candid_opt_n53(result);
+        return from_candid_opt_n55(result);
     }
     async getOperationsPrincipal(): Promise<Principal | null> {
         const result = await this.actor.getOperationsPrincipal();
@@ -685,7 +709,7 @@ export class Backend implements backendInterface {
     }
     async getTopUpRequest(arg0: bigint): Promise<TopUpRequestRecord | null> {
         const result = await this.actor.getTopUpRequest(arg0);
-        return from_candid_opt_n56(result);
+        return from_candid_opt_n58(result);
     }
     async getUserCount(): Promise<bigint> {
         const result = await this.actor.getUserCount();
@@ -701,39 +725,39 @@ export class Backend implements backendInterface {
     }
     async listClients(arg0: bigint, arg1: bigint, arg2: boolean): Promise<Array<Client>> {
         const result = await this.actor.listClients(arg0, arg1, arg2);
-        return from_candid_vec_n61(result);
+        return from_candid_vec_n63(result);
     }
     async listDocumentsByMatter(arg0: bigint, arg1: bigint, arg2: bigint, arg3: boolean): Promise<Array<Document>> {
         const result = await this.actor.listDocumentsByMatter(arg0, arg1, arg2, arg3);
-        return from_candid_vec_n62(result);
+        return from_candid_vec_n64(result);
     }
     async listFolderContents(arg0: FolderScope): Promise<FolderListing> {
-        const result = await this.actor.listFolderContents(to_candid_FolderScope_n63(arg0));
-        return from_candid_FolderListing_n65(result);
+        const result = await this.actor.listFolderContents(to_candid_FolderScope_n65(arg0));
+        return from_candid_FolderListing_n67(result);
     }
     async listLibraryItems(arg0: LibraryFilter, arg1: bigint, arg2: bigint): Promise<Array<LibraryItemSearchResult>> {
-        const result = await this.actor.listLibraryItems(to_candid_LibraryFilter_n70(arg0), arg1, arg2);
-        return from_candid_vec_n67(result);
+        const result = await this.actor.listLibraryItems(to_candid_LibraryFilter_n72(arg0), arg1, arg2);
+        return from_candid_vec_n69(result);
     }
     async listLibraryVersions(arg0: bigint): Promise<Array<LibraryVersion>> {
         const result = await this.actor.listLibraryVersions(arg0);
         return result;
     }
     async listMatters(arg0: bigint, arg1: bigint, arg2: MatterStatus | null): Promise<Array<Matter>> {
-        const result = await this.actor.listMatters(arg0, arg1, to_candid_opt_n74(arg2));
-        return from_candid_vec_n77(result);
+        const result = await this.actor.listMatters(arg0, arg1, to_candid_opt_n76(arg2));
+        return from_candid_vec_n79(result);
     }
     async listMattersByClient(arg0: bigint, arg1: bigint, arg2: bigint, arg3: MatterStatus | null): Promise<Array<Matter>> {
-        const result = await this.actor.listMattersByClient(arg0, arg1, arg2, to_candid_opt_n74(arg3));
-        return from_candid_vec_n77(result);
+        const result = await this.actor.listMattersByClient(arg0, arg1, arg2, to_candid_opt_n76(arg3));
+        return from_candid_vec_n79(result);
     }
     async listTopUpRequests(arg0: TopUpRequestStatus | null): Promise<Array<TopUpRequestRecord>> {
-        const result = await this.actor.listTopUpRequests(to_candid_opt_n78(arg0));
-        return from_candid_vec_n81(result);
+        const result = await this.actor.listTopUpRequests(to_candid_opt_n80(arg0));
+        return from_candid_vec_n83(result);
     }
     async listUsers(): Promise<Array<[Principal, UserRecord]>> {
         const result = await this.actor.listUsers();
-        return from_candid_vec_n82(result);
+        return from_candid_vec_n84(result);
     }
     async listVersions(arg0: bigint): Promise<Array<DocumentVersion>> {
         const result = await this.actor.listVersions(arg0);
@@ -745,7 +769,7 @@ export class Backend implements backendInterface {
     }
     async migrateLibraryVersions(): Promise<Result_5> {
         const result = await this.actor.migrateLibraryVersions();
-        return from_candid_Result_5_n86(result);
+        return from_candid_Result_5_n88(result);
     }
     async moveFolder(arg0: bigint, arg1: bigint | null): Promise<Result> {
         const result = await this.actor.moveFolder(arg0, to_candid_opt_n20(arg1));
@@ -756,12 +780,12 @@ export class Backend implements backendInterface {
         return from_candid_Result_n1(result);
     }
     async prepareDocumentDownload(arg0: bigint, arg1: FileAccessKind): Promise<Result_4> {
-        const result = await this.actor.prepareDocumentDownload(arg0, to_candid_FileAccessKind_n88(arg1));
-        return from_candid_Result_4_n90(result);
+        const result = await this.actor.prepareDocumentDownload(arg0, to_candid_FileAccessKind_n90(arg1));
+        return from_candid_Result_4_n92(result);
     }
     async prepareLibraryDownload(arg0: bigint, arg1: FileAccessKind): Promise<Result_3> {
-        const result = await this.actor.prepareLibraryDownload(arg0, to_candid_FileAccessKind_n88(arg1));
-        return from_candid_Result_3_n92(result);
+        const result = await this.actor.prepareLibraryDownload(arg0, to_candid_FileAccessKind_n90(arg1));
+        return from_candid_Result_3_n94(result);
     }
     async putMatterOnHold(arg0: bigint): Promise<Result> {
         const result = await this.actor.putMatterOnHold(arg0);
@@ -773,7 +797,7 @@ export class Backend implements backendInterface {
     }
     async readAuditEntries(arg0: bigint, arg1: bigint): Promise<Result_2> {
         const result = await this.actor.readAuditEntries(arg0, arg1);
-        return from_candid_Result_2_n94(result);
+        return from_candid_Result_2_n96(result);
     }
     async removeLibraryItemTag(arg0: bigint, arg1: string): Promise<Result> {
         const result = await this.actor.removeLibraryItemTag(arg0, arg1);
@@ -804,20 +828,20 @@ export class Backend implements backendInterface {
         return from_candid_Result_n1(result);
     }
     async searchClients(arg0: ClientFilter, arg1: bigint, arg2: bigint): Promise<Array<Client>> {
-        const result = await this.actor.searchClients(to_candid_ClientFilter_n100(arg0), arg1, arg2);
-        return from_candid_vec_n61(result);
+        const result = await this.actor.searchClients(to_candid_ClientFilter_n102(arg0), arg1, arg2);
+        return from_candid_vec_n63(result);
     }
     async searchDocuments(arg0: DocumentFilter, arg1: bigint, arg2: bigint): Promise<Array<DocumentSearchResult>> {
-        const result = await this.actor.searchDocuments(to_candid_DocumentFilter_n104(arg0), arg1, arg2);
-        return from_candid_vec_n108(result);
+        const result = await this.actor.searchDocuments(to_candid_DocumentFilter_n106(arg0), arg1, arg2);
+        return from_candid_vec_n110(result);
     }
     async searchLibrary(arg0: LibraryFilter, arg1: bigint, arg2: bigint): Promise<Array<LibraryItemSearchResult>> {
-        const result = await this.actor.searchLibrary(to_candid_LibraryFilter_n70(arg0), arg1, arg2);
-        return from_candid_vec_n67(result);
+        const result = await this.actor.searchLibrary(to_candid_LibraryFilter_n72(arg0), arg1, arg2);
+        return from_candid_vec_n69(result);
     }
     async searchMatters(arg0: MatterFilter, arg1: bigint, arg2: bigint): Promise<Array<Matter>> {
-        const result = await this.actor.searchMatters(to_candid_MatterFilter_n111(arg0), arg1, arg2);
-        return from_candid_vec_n77(result);
+        const result = await this.actor.searchMatters(to_candid_MatterFilter_n113(arg0), arg1, arg2);
+        return from_candid_vec_n79(result);
     }
     async setLibraryItemTags(arg0: bigint, arg1: Array<string>): Promise<Result> {
         const result = await this.actor.setLibraryItemTags(arg0, arg1);
@@ -856,7 +880,7 @@ export class Backend implements backendInterface {
         return from_candid_Result_n1(result);
     }
     async updateClient(arg0: bigint, arg1: string | null, arg2: ClientType | null, arg3: string | null, arg4: string | null, arg5: string | null, arg6: string | null): Promise<Result> {
-        const result = await this.actor.updateClient(arg0, to_candid_opt_n8(arg1), to_candid_opt_n113(arg2), to_candid_opt_n8(arg3), to_candid_opt_n8(arg4), to_candid_opt_n8(arg5), to_candid_opt_n8(arg6));
+        const result = await this.actor.updateClient(arg0, to_candid_opt_n8(arg1), to_candid_opt_n115(arg2), to_candid_opt_n8(arg3), to_candid_opt_n8(arg4), to_candid_opt_n8(arg5), to_candid_opt_n8(arg6));
         return from_candid_Result_n1(result);
     }
     async updateLibraryItemDescription(arg0: bigint, arg1: string): Promise<Result> {
@@ -864,7 +888,7 @@ export class Backend implements backendInterface {
         return from_candid_Result_n1(result);
     }
     async updateMatter(arg0: bigint, arg1: string | null, arg2: string | null, arg3: bigint | null, arg4: Some<Principal | null> | None, arg5: string | null): Promise<Result> {
-        const result = await this.actor.updateMatter(arg0, to_candid_opt_n8(arg1), to_candid_opt_n8(arg2), to_candid_opt_n20(arg3), to_candid_opt_n114(arg4), to_candid_opt_n8(arg5));
+        const result = await this.actor.updateMatter(arg0, to_candid_opt_n8(arg1), to_candid_opt_n8(arg2), to_candid_opt_n20(arg3), to_candid_opt_n116(arg4), to_candid_opt_n8(arg5));
         return from_candid_Result_n1(result);
     }
     async whoAmI(): Promise<Principal> {
@@ -872,68 +896,68 @@ export class Backend implements backendInterface {
         return result;
     }
 }
-function from_candid_AuditEntry_n97(value: _AuditEntry): AuditEntry {
-    return from_candid_record_n98(value);
+function from_candid_AuditEntry_n99(value: _AuditEntry): AuditEntry {
+    return from_candid_record_n100(value);
 }
-function from_candid_AuditOutcome_n99(value: _AuditOutcome): AuditOutcome {
+function from_candid_AuditOutcome_n101(value: _AuditOutcome): AuditOutcome {
     return from_candid_variant_n2(value);
 }
-function from_candid_ClientStatus_n29(value: _ClientStatus): ClientStatus {
-    return from_candid_variant_n30(value);
-}
-function from_candid_ClientType_n31(value: _ClientType): ClientType {
+function from_candid_ClientStatus_n31(value: _ClientStatus): ClientStatus {
     return from_candid_variant_n32(value);
 }
-function from_candid_Client_n27(value: _Client): Client {
-    return from_candid_record_n28(value);
+function from_candid_ClientType_n33(value: _ClientType): ClientType {
+    return from_candid_variant_n34(value);
 }
-function from_candid_DocumentSearchResult_n109(value: _DocumentSearchResult): DocumentSearchResult {
-    return from_candid_record_n110(value);
+function from_candid_Client_n29(value: _Client): Client {
+    return from_candid_record_n30(value);
 }
-function from_candid_DocumentStatus_n37(value: _DocumentStatus): DocumentStatus {
-    return from_candid_variant_n38(value);
+function from_candid_DocumentSearchResult_n111(value: _DocumentSearchResult): DocumentSearchResult {
+    return from_candid_record_n112(value);
 }
-function from_candid_Document_n35(value: _Document): Document {
-    return from_candid_record_n36(value);
+function from_candid_DocumentStatus_n39(value: _DocumentStatus): DocumentStatus {
+    return from_candid_variant_n40(value);
+}
+function from_candid_Document_n37(value: _Document): Document {
+    return from_candid_record_n38(value);
 }
 function from_candid_ExportManifest_n13(value: _ExportManifest): ExportManifest {
     return from_candid_record_n14(value);
 }
-function from_candid_FolderListing_n65(value: _FolderListing): FolderListing {
-    return from_candid_record_n66(value);
+function from_candid_FolderListing_n67(value: _FolderListing): FolderListing {
+    return from_candid_record_n68(value);
 }
 function from_candid_Folder_n16(value: _Folder): Folder {
     return from_candid_record_n17(value);
 }
-function from_candid_LibraryItemSearchResult_n68(value: _LibraryItemSearchResult): LibraryItemSearchResult {
-    return from_candid_record_n69(value);
+function from_candid_LibraryItemSearchResult_n70(value: _LibraryItemSearchResult): LibraryItemSearchResult {
+    return from_candid_record_n71(value);
 }
-function from_candid_LibraryItemStatus_n44(value: _LibraryItemStatus): LibraryItemStatus {
-    return from_candid_variant_n45(value);
+function from_candid_LibraryItemStatus_n46(value: _LibraryItemStatus): LibraryItemStatus {
+    return from_candid_variant_n47(value);
 }
-function from_candid_LibraryItem_n42(value: _LibraryItem): LibraryItem {
-    return from_candid_record_n43(value);
+function from_candid_LibraryItem_n44(value: _LibraryItem): LibraryItem {
+    return from_candid_record_n45(value);
 }
-function from_candid_MatterStatus_n50(value: _MatterStatus): MatterStatus {
-    return from_candid_variant_n51(value);
+function from_candid_MatterStatus_n52(value: _MatterStatus): MatterStatus {
+    return from_candid_variant_n53(value);
 }
-function from_candid_Matter_n48(value: _Matter): Matter {
-    return from_candid_record_n49(value);
+function from_candid_Matter_n50(value: _Matter): Matter {
+    return from_candid_record_n51(value);
 }
 function from_candid_Result_1_n9(value: _Result_1): Result_1 {
     return from_candid_variant_n10(value);
 }
-function from_candid_Result_2_n94(value: _Result_2): Result_2 {
+function from_candid_Result_2_n96(value: _Result_2): Result_2 {
+    return from_candid_variant_n97(value);
+}
+function from_candid_Result_3_n94(value: _Result_3): Result_3 {
     return from_candid_variant_n95(value);
 }
-function from_candid_Result_3_n92(value: _Result_3): Result_3 {
+function from_candid_Result_4_n92(value: _Result_4): Result_4 {
     return from_candid_variant_n93(value);
 }
-function from_candid_Result_4_n90(value: _Result_4): Result_4 {
-    return from_candid_variant_n91(value);
-}
-function from_candid_Result_5_n86(value: _Result_5): Result_5 {
-    return from_candid_variant_n87(value);
+function from_candid_Result_5_n88(value: _Result_5): Result_5 {
+    return from_candid_variant_n89(value);
 }
 function from_candid_Result_6_n23(value: _Result_6): Result_6 {
     return from_candid_variant_n24(value);
@@ -944,20 +968,23 @@ function from_candid_Result_7_n21(value: _Result_7): Result_7 {
 function from_candid_Result_8_n11(value: _Result_8): Result_8 {
     return from_candid_variant_n12(value);
 }
+function from_candid_Result_9_n25(value: _Result_9): Result_9 {
+    return from_candid_variant_n26(value);
+}
 function from_candid_Result_n1(value: _Result): Result {
     return from_candid_variant_n2(value);
 }
-function from_candid_Role_n54(value: _Role): Role {
-    return from_candid_variant_n55(value);
+function from_candid_Role_n56(value: _Role): Role {
+    return from_candid_variant_n57(value);
 }
-function from_candid_TopUpRequestRecord_n57(value: _TopUpRequestRecord): TopUpRequestRecord {
-    return from_candid_record_n58(value);
+function from_candid_TopUpRequestRecord_n59(value: _TopUpRequestRecord): TopUpRequestRecord {
+    return from_candid_record_n60(value);
 }
-function from_candid_TopUpRequestStatus_n59(value: _TopUpRequestStatus): TopUpRequestStatus {
-    return from_candid_variant_n60(value);
+function from_candid_TopUpRequestStatus_n61(value: _TopUpRequestStatus): TopUpRequestStatus {
+    return from_candid_variant_n62(value);
 }
-function from_candid_UserRecord_n84(value: _UserRecord): UserRecord {
-    return from_candid_record_n85(value);
+function from_candid_UserRecord_n86(value: _UserRecord): UserRecord {
+    return from_candid_record_n87(value);
 }
 function from_candid_opt_n18(value: [] | [bigint]): bigint | null {
     return value.length === 0 ? null : value[0];
@@ -965,43 +992,67 @@ function from_candid_opt_n18(value: [] | [bigint]): bigint | null {
 function from_candid_opt_n19(value: [] | [Principal]): Principal | null {
     return value.length === 0 ? null : value[0];
 }
-function from_candid_opt_n25(value: [] | [Uint8Array]): Uint8Array | null {
+function from_candid_opt_n27(value: [] | [Uint8Array]): Uint8Array | null {
     return value.length === 0 ? null : value[0];
 }
-function from_candid_opt_n26(value: [] | [_Client]): Client | null {
-    return value.length === 0 ? null : from_candid_Client_n27(value[0]);
+function from_candid_opt_n28(value: [] | [_Client]): Client | null {
+    return value.length === 0 ? null : from_candid_Client_n29(value[0]);
 }
-function from_candid_opt_n33(value: [] | [string]): string | null {
+function from_candid_opt_n35(value: [] | [string]): string | null {
     return value.length === 0 ? null : value[0];
 }
-function from_candid_opt_n34(value: [] | [_Document]): Document | null {
-    return value.length === 0 ? null : from_candid_Document_n35(value[0]);
+function from_candid_opt_n36(value: [] | [_Document]): Document | null {
+    return value.length === 0 ? null : from_candid_Document_n37(value[0]);
 }
-function from_candid_opt_n39(value: [] | [_DocumentVersion]): DocumentVersion | null {
+function from_candid_opt_n41(value: [] | [_DocumentVersion]): DocumentVersion | null {
     return value.length === 0 ? null : value[0];
 }
-function from_candid_opt_n40(value: [] | [_Folder]): Folder | null {
+function from_candid_opt_n42(value: [] | [_Folder]): Folder | null {
     return value.length === 0 ? null : from_candid_Folder_n16(value[0]);
 }
-function from_candid_opt_n41(value: [] | [_LibraryItem]): LibraryItem | null {
-    return value.length === 0 ? null : from_candid_LibraryItem_n42(value[0]);
+function from_candid_opt_n43(value: [] | [_LibraryItem]): LibraryItem | null {
+    return value.length === 0 ? null : from_candid_LibraryItem_n44(value[0]);
 }
-function from_candid_opt_n46(value: [] | [_LibraryVersion]): LibraryVersion | null {
+function from_candid_opt_n48(value: [] | [_LibraryVersion]): LibraryVersion | null {
     return value.length === 0 ? null : value[0];
 }
-function from_candid_opt_n47(value: [] | [_Matter]): Matter | null {
-    return value.length === 0 ? null : from_candid_Matter_n48(value[0]);
+function from_candid_opt_n49(value: [] | [_Matter]): Matter | null {
+    return value.length === 0 ? null : from_candid_Matter_n50(value[0]);
 }
-function from_candid_opt_n52(value: [] | [_Time]): Time | null {
+function from_candid_opt_n54(value: [] | [_Time]): Time | null {
     return value.length === 0 ? null : value[0];
 }
-function from_candid_opt_n53(value: [] | [_Role]): Role | null {
-    return value.length === 0 ? null : from_candid_Role_n54(value[0]);
+function from_candid_opt_n55(value: [] | [_Role]): Role | null {
+    return value.length === 0 ? null : from_candid_Role_n56(value[0]);
 }
-function from_candid_opt_n56(value: [] | [_TopUpRequestRecord]): TopUpRequestRecord | null {
-    return value.length === 0 ? null : from_candid_TopUpRequestRecord_n57(value[0]);
+function from_candid_opt_n58(value: [] | [_TopUpRequestRecord]): TopUpRequestRecord | null {
+    return value.length === 0 ? null : from_candid_TopUpRequestRecord_n59(value[0]);
 }
-function from_candid_record_n110(value: {
+function from_candid_record_n100(value: {
+    id: bigint;
+    action: string;
+    target: [] | [Principal];
+    timestamp: _Time;
+    caller: Principal;
+    outcome: _AuditOutcome;
+}): {
+    id: bigint;
+    action: string;
+    target?: Principal;
+    timestamp: Time;
+    caller: Principal;
+    outcome: AuditOutcome;
+} {
+    return {
+        id: value.id,
+        action: value.action,
+        target: record_opt_to_undefined(from_candid_opt_n19(value.target)),
+        timestamp: value.timestamp,
+        caller: value.caller,
+        outcome: from_candid_AuditOutcome_n101(value.outcome)
+    };
+}
+function from_candid_record_n112(value: {
     currentVersion: _DocumentVersion;
     document: _Document;
 }): {
@@ -1010,7 +1061,7 @@ function from_candid_record_n110(value: {
 } {
     return {
         currentVersion: value.currentVersion,
-        document: from_candid_Document_n35(value.document)
+        document: from_candid_Document_n37(value.document)
     };
 }
 function from_candid_record_n14(value: {
@@ -1112,7 +1163,7 @@ function from_candid_record_n17(value: {
         parentId: record_opt_to_undefined(from_candid_opt_n18(value.parentId))
     };
 }
-function from_candid_record_n28(value: {
+function from_candid_record_n30(value: {
     id: bigint;
     status: _ClientStatus;
     clientType: _ClientType;
@@ -1141,20 +1192,20 @@ function from_candid_record_n28(value: {
 } {
     return {
         id: value.id,
-        status: from_candid_ClientStatus_n29(value.status),
-        clientType: from_candid_ClientType_n31(value.clientType),
+        status: from_candid_ClientStatus_n31(value.status),
+        clientType: from_candid_ClientType_n33(value.clientType),
         name: value.name,
         createdAt: value.createdAt,
         createdBy: value.createdBy,
-        primaryEmail: record_opt_to_undefined(from_candid_opt_n33(value.primaryEmail)),
+        primaryEmail: record_opt_to_undefined(from_candid_opt_n35(value.primaryEmail)),
         notes: value.notes,
         lastModifiedAt: value.lastModifiedAt,
         lastModifiedBy: value.lastModifiedBy,
-        primaryPhone: record_opt_to_undefined(from_candid_opt_n33(value.primaryPhone)),
-        identifier: record_opt_to_undefined(from_candid_opt_n33(value.identifier))
+        primaryPhone: record_opt_to_undefined(from_candid_opt_n35(value.primaryPhone)),
+        identifier: record_opt_to_undefined(from_candid_opt_n35(value.identifier))
     };
 }
-function from_candid_record_n36(value: {
+function from_candid_record_n38(value: {
     id: bigint;
     status: _DocumentStatus;
     createdAt: _Time;
@@ -1171,14 +1222,14 @@ function from_candid_record_n36(value: {
 } {
     return {
         id: value.id,
-        status: from_candid_DocumentStatus_n37(value.status),
+        status: from_candid_DocumentStatus_n39(value.status),
         createdAt: value.createdAt,
         createdBy: value.createdBy,
         matterId: value.matterId,
         currentVersionId: value.currentVersionId
     };
 }
-function from_candid_record_n43(value: {
+function from_candid_record_n45(value: {
     id: bigint;
     status: _LibraryItemStatus;
     name: string;
@@ -1201,7 +1252,7 @@ function from_candid_record_n43(value: {
 } {
     return {
         id: value.id,
-        status: from_candid_LibraryItemStatus_n44(value.status),
+        status: from_candid_LibraryItemStatus_n46(value.status),
         name: value.name,
         createdAt: value.createdAt,
         createdBy: value.createdBy,
@@ -1211,7 +1262,7 @@ function from_candid_record_n43(value: {
         currentVersionId: value.currentVersionId
     };
 }
-function from_candid_record_n49(value: {
+function from_candid_record_n51(value: {
     id: bigint;
     status: _MatterStatus;
     title: string;
@@ -1242,13 +1293,13 @@ function from_candid_record_n49(value: {
 } {
     return {
         id: value.id,
-        status: from_candid_MatterStatus_n50(value.status),
+        status: from_candid_MatterStatus_n52(value.status),
         title: value.title,
         clientId: value.clientId,
         createdAt: value.createdAt,
         createdBy: value.createdBy,
         description: value.description,
-        closedAt: record_opt_to_undefined(from_candid_opt_n52(value.closedAt)),
+        closedAt: record_opt_to_undefined(from_candid_opt_n54(value.closedAt)),
         lastModifiedAt: value.lastModifiedAt,
         lastModifiedBy: value.lastModifiedBy,
         matterType: value.matterType,
@@ -1256,7 +1307,7 @@ function from_candid_record_n49(value: {
         openedAt: value.openedAt
     };
 }
-function from_candid_record_n58(value: {
+function from_candid_record_n60(value: {
     id: bigint;
     status: _TopUpRequestStatus;
     note: string;
@@ -1281,18 +1332,18 @@ function from_candid_record_n58(value: {
 } {
     return {
         id: value.id,
-        status: from_candid_TopUpRequestStatus_n59(value.status),
+        status: from_candid_TopUpRequestStatus_n61(value.status),
         note: value.note,
         createdAt: value.createdAt,
         createdBy: value.createdBy,
         requestedTrillionCycles: value.requestedTrillionCycles,
-        cancelledAt: record_opt_to_undefined(from_candid_opt_n52(value.cancelledAt)),
+        cancelledAt: record_opt_to_undefined(from_candid_opt_n54(value.cancelledAt)),
         cancelledBy: record_opt_to_undefined(from_candid_opt_n19(value.cancelledBy)),
-        fulfilledAt: record_opt_to_undefined(from_candid_opt_n52(value.fulfilledAt)),
+        fulfilledAt: record_opt_to_undefined(from_candid_opt_n54(value.fulfilledAt)),
         fulfilledBy: record_opt_to_undefined(from_candid_opt_n19(value.fulfilledBy))
     };
 }
-function from_candid_record_n66(value: {
+function from_candid_record_n68(value: {
     folders: Array<_Folder>;
     items: Array<_LibraryItemSearchResult>;
 }): {
@@ -1301,10 +1352,10 @@ function from_candid_record_n66(value: {
 } {
     return {
         folders: from_candid_vec_n15(value.folders),
-        items: from_candid_vec_n67(value.items)
+        items: from_candid_vec_n69(value.items)
     };
 }
-function from_candid_record_n69(value: {
+function from_candid_record_n71(value: {
     item: _LibraryItem;
     currentVersion: _LibraryVersion;
 }): {
@@ -1312,11 +1363,11 @@ function from_candid_record_n69(value: {
     currentVersion: LibraryVersion;
 } {
     return {
-        item: from_candid_LibraryItem_n42(value.item),
+        item: from_candid_LibraryItem_n44(value.item),
         currentVersion: value.currentVersion
     };
 }
-function from_candid_record_n85(value: {
+function from_candid_record_n87(value: {
     role: _Role;
     addedAt: _Time;
     addedBy: Principal;
@@ -1328,40 +1379,16 @@ function from_candid_record_n85(value: {
     suspended: boolean;
 } {
     return {
-        role: from_candid_Role_n54(value.role),
+        role: from_candid_Role_n56(value.role),
         addedAt: value.addedAt,
         addedBy: value.addedBy,
         suspended: value.suspended
     };
 }
-function from_candid_record_n98(value: {
-    id: bigint;
-    action: string;
-    target: [] | [Principal];
-    timestamp: _Time;
-    caller: Principal;
-    outcome: _AuditOutcome;
-}): {
-    id: bigint;
-    action: string;
-    target?: Principal;
-    timestamp: Time;
-    caller: Principal;
-    outcome: AuditOutcome;
-} {
-    return {
-        id: value.id,
-        action: value.action,
-        target: record_opt_to_undefined(from_candid_opt_n19(value.target)),
-        timestamp: value.timestamp,
-        caller: value.caller,
-        outcome: from_candid_AuditOutcome_n99(value.outcome)
-    };
-}
-function from_candid_tuple_n83(value: [Principal, _UserRecord]): [Principal, UserRecord] {
+function from_candid_tuple_n85(value: [Principal, _UserRecord]): [Principal, UserRecord] {
     return [
         value[0],
-        from_candid_UserRecord_n84(value[1])
+        from_candid_UserRecord_n86(value[1])
     ];
 }
 function from_candid_variant_n10(value: {
@@ -1475,80 +1502,13 @@ function from_candid_variant_n24(value: {
         err: value.err
     } : value;
 }
-function from_candid_variant_n30(value: {
-    Inactive: null;
-} | {
-    Active: null;
-}): ClientStatus {
-    return "Inactive" in value ? ClientStatus.Inactive : "Active" in value ? ClientStatus.Active : value;
-}
-function from_candid_variant_n32(value: {
-    Company: null;
-} | {
-    Individual: null;
-} | {
-    Other: null;
-}): ClientType {
-    return "Company" in value ? ClientType.Company : "Individual" in value ? ClientType.Individual : "Other" in value ? ClientType.Other : value;
-}
-function from_candid_variant_n38(value: {
-    Active: null;
-} | {
-    Deleted: null;
-}): DocumentStatus {
-    return "Active" in value ? DocumentStatus.Active : "Deleted" in value ? DocumentStatus.Deleted : value;
-}
-function from_candid_variant_n45(value: {
-    Active: null;
-} | {
-    Archived: null;
-} | {
-    Deleted: null;
-}): LibraryItemStatus {
-    return "Active" in value ? LibraryItemStatus.Active : "Archived" in value ? LibraryItemStatus.Archived : "Deleted" in value ? LibraryItemStatus.Deleted : value;
-}
-function from_candid_variant_n51(value: {
-    OnHold: null;
-} | {
-    Open: null;
-} | {
-    Closed: null;
-} | {
-    Archived: null;
-}): MatterStatus {
-    return "OnHold" in value ? MatterStatus.OnHold : "Open" in value ? MatterStatus.Open : "Closed" in value ? MatterStatus.Closed : "Archived" in value ? MatterStatus.Archived : value;
-}
-function from_candid_variant_n55(value: {
-    Staff: null;
-} | {
-    Associate: null;
-} | {
-    Partner: null;
-}): Role {
-    return "Staff" in value ? Role.Staff : "Associate" in value ? Role.Associate : "Partner" in value ? Role.Partner : value;
-}
-function from_candid_variant_n60(value: {
-    Cancelled: null;
-} | {
-    Fulfilled: null;
-} | {
-    Pending: null;
-}): TopUpRequestStatus {
-    return "Cancelled" in value ? TopUpRequestStatus.Cancelled : "Fulfilled" in value ? TopUpRequestStatus.Fulfilled : "Pending" in value ? TopUpRequestStatus.Pending : value;
-}
-function from_candid_variant_n87(value: {
-    ok: {
-        skipped: bigint;
-        migrated: bigint;
-    };
+function from_candid_variant_n26(value: {
+    ok: _CertificatePayload;
 } | {
     err: string;
 }): {
     __kind__: "ok";
-    ok: {
-        skipped: bigint;
-        migrated: bigint;
-    };
+    ok: CertificatePayload;
 } | {
     __kind__: "err";
     err: string;
@@ -1561,26 +1521,79 @@ function from_candid_variant_n87(value: {
         err: value.err
     } : value;
 }
-function from_candid_variant_n91(value: {
+function from_candid_variant_n32(value: {
+    Inactive: null;
+} | {
+    Active: null;
+}): ClientStatus {
+    return "Inactive" in value ? ClientStatus.Inactive : "Active" in value ? ClientStatus.Active : value;
+}
+function from_candid_variant_n34(value: {
+    Company: null;
+} | {
+    Individual: null;
+} | {
+    Other: null;
+}): ClientType {
+    return "Company" in value ? ClientType.Company : "Individual" in value ? ClientType.Individual : "Other" in value ? ClientType.Other : value;
+}
+function from_candid_variant_n40(value: {
+    Active: null;
+} | {
+    Deleted: null;
+}): DocumentStatus {
+    return "Active" in value ? DocumentStatus.Active : "Deleted" in value ? DocumentStatus.Deleted : value;
+}
+function from_candid_variant_n47(value: {
+    Active: null;
+} | {
+    Archived: null;
+} | {
+    Deleted: null;
+}): LibraryItemStatus {
+    return "Active" in value ? LibraryItemStatus.Active : "Archived" in value ? LibraryItemStatus.Archived : "Deleted" in value ? LibraryItemStatus.Deleted : value;
+}
+function from_candid_variant_n53(value: {
+    OnHold: null;
+} | {
+    Open: null;
+} | {
+    Closed: null;
+} | {
+    Archived: null;
+}): MatterStatus {
+    return "OnHold" in value ? MatterStatus.OnHold : "Open" in value ? MatterStatus.Open : "Closed" in value ? MatterStatus.Closed : "Archived" in value ? MatterStatus.Archived : value;
+}
+function from_candid_variant_n57(value: {
+    Staff: null;
+} | {
+    Associate: null;
+} | {
+    Partner: null;
+}): Role {
+    return "Staff" in value ? Role.Staff : "Associate" in value ? Role.Associate : "Partner" in value ? Role.Partner : value;
+}
+function from_candid_variant_n62(value: {
+    Cancelled: null;
+} | {
+    Fulfilled: null;
+} | {
+    Pending: null;
+}): TopUpRequestStatus {
+    return "Cancelled" in value ? TopUpRequestStatus.Cancelled : "Fulfilled" in value ? TopUpRequestStatus.Fulfilled : "Pending" in value ? TopUpRequestStatus.Pending : value;
+}
+function from_candid_variant_n89(value: {
     ok: {
-        sha256: Uint8Array;
-        contentType: string;
-        filename: string;
-        chunkCount: bigint;
-        documentId: bigint;
-        sizeBytes: bigint;
+        skipped: bigint;
+        migrated: bigint;
     };
 } | {
     err: string;
 }): {
     __kind__: "ok";
     ok: {
-        sha256: Uint8Array;
-        contentType: string;
-        filename: string;
-        chunkCount: bigint;
-        documentId: bigint;
-        sizeBytes: bigint;
+        skipped: bigint;
+        migrated: bigint;
     };
 } | {
     __kind__: "err";
@@ -1596,6 +1609,39 @@ function from_candid_variant_n91(value: {
 }
 function from_candid_variant_n93(value: {
     ok: {
+        sha256: Uint8Array;
+        contentType: string;
+        filename: string;
+        chunkCount: bigint;
+        documentId: bigint;
+        sizeBytes: bigint;
+    };
+} | {
+    err: string;
+}): {
+    __kind__: "ok";
+    ok: {
+        sha256: Uint8Array;
+        contentType: string;
+        filename: string;
+        chunkCount: bigint;
+        documentId: bigint;
+        sizeBytes: bigint;
+    };
+} | {
+    __kind__: "err";
+    err: string;
+} {
+    return "ok" in value ? {
+        __kind__: "ok",
+        ok: value.ok
+    } : "err" in value ? {
+        __kind__: "err",
+        err: value.err
+    } : value;
+}
+function from_candid_variant_n95(value: {
+    ok: {
         itemId: bigint;
         versionId: bigint;
         sha256: Uint8Array;
@@ -1629,7 +1675,7 @@ function from_candid_variant_n93(value: {
         err: value.err
     } : value;
 }
-function from_candid_variant_n95(value: {
+function from_candid_variant_n97(value: {
     ok: Array<_AuditEntry>;
 } | {
     err: string;
@@ -1642,82 +1688,82 @@ function from_candid_variant_n95(value: {
 } {
     return "ok" in value ? {
         __kind__: "ok",
-        ok: from_candid_vec_n96(value.ok)
+        ok: from_candid_vec_n98(value.ok)
     } : "err" in value ? {
         __kind__: "err",
         err: value.err
     } : value;
 }
-function from_candid_vec_n108(value: Array<_DocumentSearchResult>): Array<DocumentSearchResult> {
-    return value.map((x)=>from_candid_DocumentSearchResult_n109(x));
+function from_candid_vec_n110(value: Array<_DocumentSearchResult>): Array<DocumentSearchResult> {
+    return value.map((x)=>from_candid_DocumentSearchResult_n111(x));
 }
 function from_candid_vec_n15(value: Array<_Folder>): Array<Folder> {
     return value.map((x)=>from_candid_Folder_n16(x));
 }
-function from_candid_vec_n61(value: Array<_Client>): Array<Client> {
-    return value.map((x)=>from_candid_Client_n27(x));
+function from_candid_vec_n63(value: Array<_Client>): Array<Client> {
+    return value.map((x)=>from_candid_Client_n29(x));
 }
-function from_candid_vec_n62(value: Array<_Document>): Array<Document> {
-    return value.map((x)=>from_candid_Document_n35(x));
+function from_candid_vec_n64(value: Array<_Document>): Array<Document> {
+    return value.map((x)=>from_candid_Document_n37(x));
 }
-function from_candid_vec_n67(value: Array<_LibraryItemSearchResult>): Array<LibraryItemSearchResult> {
-    return value.map((x)=>from_candid_LibraryItemSearchResult_n68(x));
+function from_candid_vec_n69(value: Array<_LibraryItemSearchResult>): Array<LibraryItemSearchResult> {
+    return value.map((x)=>from_candid_LibraryItemSearchResult_n70(x));
 }
-function from_candid_vec_n77(value: Array<_Matter>): Array<Matter> {
-    return value.map((x)=>from_candid_Matter_n48(x));
+function from_candid_vec_n79(value: Array<_Matter>): Array<Matter> {
+    return value.map((x)=>from_candid_Matter_n50(x));
 }
-function from_candid_vec_n81(value: Array<_TopUpRequestRecord>): Array<TopUpRequestRecord> {
-    return value.map((x)=>from_candid_TopUpRequestRecord_n57(x));
+function from_candid_vec_n83(value: Array<_TopUpRequestRecord>): Array<TopUpRequestRecord> {
+    return value.map((x)=>from_candid_TopUpRequestRecord_n59(x));
 }
-function from_candid_vec_n82(value: Array<[Principal, _UserRecord]>): Array<[Principal, UserRecord]> {
-    return value.map((x)=>from_candid_tuple_n83(x));
+function from_candid_vec_n84(value: Array<[Principal, _UserRecord]>): Array<[Principal, UserRecord]> {
+    return value.map((x)=>from_candid_tuple_n85(x));
 }
-function from_candid_vec_n96(value: Array<_AuditEntry>): Array<AuditEntry> {
-    return value.map((x)=>from_candid_AuditEntry_n97(x));
+function from_candid_vec_n98(value: Array<_AuditEntry>): Array<AuditEntry> {
+    return value.map((x)=>from_candid_AuditEntry_n99(x));
 }
-function to_candid_ClientFilter_n100(value: ClientFilter): _ClientFilter {
-    return to_candid_record_n101(value);
+function to_candid_ClientFilter_n102(value: ClientFilter): _ClientFilter {
+    return to_candid_record_n103(value);
 }
-function to_candid_ClientStatus_n102(value: ClientStatus): _ClientStatus {
-    return to_candid_variant_n103(value);
+function to_candid_ClientStatus_n104(value: ClientStatus): _ClientStatus {
+    return to_candid_variant_n105(value);
 }
 function to_candid_ClientType_n6(value: ClientType): _ClientType {
     return to_candid_variant_n7(value);
 }
-function to_candid_DocumentFilter_n104(value: DocumentFilter): _DocumentFilter {
-    return to_candid_record_n105(value);
+function to_candid_DocumentFilter_n106(value: DocumentFilter): _DocumentFilter {
+    return to_candid_record_n107(value);
 }
-function to_candid_DocumentStatus_n106(value: DocumentStatus): _DocumentStatus {
-    return to_candid_variant_n107(value);
+function to_candid_DocumentStatus_n108(value: DocumentStatus): _DocumentStatus {
+    return to_candid_variant_n109(value);
 }
-function to_candid_FileAccessKind_n88(value: FileAccessKind): _FileAccessKind {
-    return to_candid_variant_n89(value);
+function to_candid_FileAccessKind_n90(value: FileAccessKind): _FileAccessKind {
+    return to_candid_variant_n91(value);
 }
-function to_candid_FolderScope_n63(value: FolderScope): _FolderScope {
-    return to_candid_variant_n64(value);
+function to_candid_FolderScope_n65(value: FolderScope): _FolderScope {
+    return to_candid_variant_n66(value);
 }
-function to_candid_LibraryFilter_n70(value: LibraryFilter): _LibraryFilter {
-    return to_candid_record_n71(value);
+function to_candid_LibraryFilter_n72(value: LibraryFilter): _LibraryFilter {
+    return to_candid_record_n73(value);
 }
-function to_candid_LibraryItemStatus_n72(value: LibraryItemStatus): _LibraryItemStatus {
-    return to_candid_variant_n73(value);
+function to_candid_LibraryItemStatus_n74(value: LibraryItemStatus): _LibraryItemStatus {
+    return to_candid_variant_n75(value);
 }
-function to_candid_MatterFilter_n111(value: MatterFilter): _MatterFilter {
-    return to_candid_record_n112(value);
+function to_candid_MatterFilter_n113(value: MatterFilter): _MatterFilter {
+    return to_candid_record_n114(value);
 }
-function to_candid_MatterStatus_n75(value: MatterStatus): _MatterStatus {
-    return to_candid_variant_n76(value);
+function to_candid_MatterStatus_n77(value: MatterStatus): _MatterStatus {
+    return to_candid_variant_n78(value);
 }
 function to_candid_Role_n3(value: Role): _Role {
     return to_candid_variant_n4(value);
 }
-function to_candid_TopUpRequestStatus_n79(value: TopUpRequestStatus): _TopUpRequestStatus {
-    return to_candid_variant_n80(value);
+function to_candid_TopUpRequestStatus_n81(value: TopUpRequestStatus): _TopUpRequestStatus {
+    return to_candid_variant_n82(value);
 }
-function to_candid_opt_n113(value: ClientType | null): [] | [_ClientType] {
+function to_candid_opt_n115(value: ClientType | null): [] | [_ClientType] {
     return value === null ? candid_none() : candid_some(to_candid_ClientType_n6(value));
 }
-function to_candid_opt_n114(value: Some<Principal | null> | None): [] | [[] | [Principal]] {
+function to_candid_opt_n116(value: Some<Principal | null> | None): [] | [[] | [Principal]] {
     return isNone(value) ? candid_none() : candid_some(to_candid_opt_n5(unwrap(value)));
 }
 function to_candid_opt_n20(value: bigint | null): [] | [bigint] {
@@ -1726,16 +1772,16 @@ function to_candid_opt_n20(value: bigint | null): [] | [bigint] {
 function to_candid_opt_n5(value: Principal | null): [] | [Principal] {
     return value === null ? candid_none() : candid_some(value);
 }
-function to_candid_opt_n74(value: MatterStatus | null): [] | [_MatterStatus] {
-    return value === null ? candid_none() : candid_some(to_candid_MatterStatus_n75(value));
-}
-function to_candid_opt_n78(value: TopUpRequestStatus | null): [] | [_TopUpRequestStatus] {
-    return value === null ? candid_none() : candid_some(to_candid_TopUpRequestStatus_n79(value));
+function to_candid_opt_n76(value: MatterStatus | null): [] | [_MatterStatus] {
+    return value === null ? candid_none() : candid_some(to_candid_MatterStatus_n77(value));
 }
 function to_candid_opt_n8(value: string | null): [] | [string] {
     return value === null ? candid_none() : candid_some(value);
 }
-function to_candid_record_n101(value: {
+function to_candid_opt_n80(value: TopUpRequestStatus | null): [] | [_TopUpRequestStatus] {
+    return value === null ? candid_none() : candid_some(to_candid_TopUpRequestStatus_n81(value));
+}
+function to_candid_record_n103(value: {
     createdBefore?: Time;
     nameContains?: string;
     clientType?: ClientType;
@@ -1755,11 +1801,11 @@ function to_candid_record_n101(value: {
         nameContains: value.nameContains ? candid_some(value.nameContains) : candid_none(),
         clientType: value.clientType ? candid_some(to_candid_ClientType_n6(value.clientType)) : candid_none(),
         createdAfter: value.createdAfter ? candid_some(value.createdAfter) : candid_none(),
-        statusFilter: value.statusFilter ? candid_some(to_candid_ClientStatus_n102(value.statusFilter)) : candid_none(),
+        statusFilter: value.statusFilter ? candid_some(to_candid_ClientStatus_n104(value.statusFilter)) : candid_none(),
         identifierContains: value.identifierContains ? candid_some(value.identifierContains) : candid_none()
     };
 }
-function to_candid_record_n105(value: {
+function to_candid_record_n107(value: {
     contentType?: string;
     filenameContains?: string;
     matterId?: bigint;
@@ -1781,12 +1827,12 @@ function to_candid_record_n105(value: {
         filenameContains: value.filenameContains ? candid_some(value.filenameContains) : candid_none(),
         matterId: value.matterId ? candid_some(value.matterId) : candid_none(),
         uploadedAfter: value.uploadedAfter ? candid_some(value.uploadedAfter) : candid_none(),
-        statusFilter: value.statusFilter ? candid_some(to_candid_DocumentStatus_n106(value.statusFilter)) : candid_none(),
+        statusFilter: value.statusFilter ? candid_some(to_candid_DocumentStatus_n108(value.statusFilter)) : candid_none(),
         uploadedBy: value.uploadedBy ? candid_some(value.uploadedBy) : candid_none(),
         uploadedBefore: value.uploadedBefore ? candid_some(value.uploadedBefore) : candid_none()
     };
 }
-function to_candid_record_n112(value: {
+function to_candid_record_n114(value: {
     openedBefore?: Time;
     clientId?: bigint;
     closedAfter?: Time;
@@ -1814,12 +1860,12 @@ function to_candid_record_n112(value: {
         titleContains: value.titleContains ? candid_some(value.titleContains) : candid_none(),
         closedBefore: value.closedBefore ? candid_some(value.closedBefore) : candid_none(),
         openedAfter: value.openedAfter ? candid_some(value.openedAfter) : candid_none(),
-        statusFilter: value.statusFilter ? candid_some(to_candid_MatterStatus_n75(value.statusFilter)) : candid_none(),
+        statusFilter: value.statusFilter ? candid_some(to_candid_MatterStatus_n77(value.statusFilter)) : candid_none(),
         matterTypeContains: value.matterTypeContains ? candid_some(value.matterTypeContains) : candid_none(),
         assignedPartner: value.assignedPartner ? candid_some(value.assignedPartner) : candid_none()
     };
 }
-function to_candid_record_n71(value: {
+function to_candid_record_n73(value: {
     folderScope: FolderScope;
     currentFilenameContains?: string;
     contentType?: string;
@@ -1841,18 +1887,18 @@ function to_candid_record_n71(value: {
     uploadedBefore: [] | [_Time];
 } {
     return {
-        folderScope: to_candid_FolderScope_n63(value.folderScope),
+        folderScope: to_candid_FolderScope_n65(value.folderScope),
         currentFilenameContains: value.currentFilenameContains ? candid_some(value.currentFilenameContains) : candid_none(),
         contentType: value.contentType ? candid_some(value.contentType) : candid_none(),
         nameContains: value.nameContains ? candid_some(value.nameContains) : candid_none(),
         uploadedAfter: value.uploadedAfter ? candid_some(value.uploadedAfter) : candid_none(),
         tagsContainsAny: value.tagsContainsAny ? candid_some(value.tagsContainsAny) : candid_none(),
-        statusFilter: value.statusFilter ? candid_some(to_candid_LibraryItemStatus_n72(value.statusFilter)) : candid_none(),
+        statusFilter: value.statusFilter ? candid_some(to_candid_LibraryItemStatus_n74(value.statusFilter)) : candid_none(),
         uploadedBy: value.uploadedBy ? candid_some(value.uploadedBy) : candid_none(),
         uploadedBefore: value.uploadedBefore ? candid_some(value.uploadedBefore) : candid_none()
     };
 }
-function to_candid_variant_n103(value: ClientStatus): {
+function to_candid_variant_n105(value: ClientStatus): {
     Inactive: null;
 } | {
     Active: null;
@@ -1863,7 +1909,7 @@ function to_candid_variant_n103(value: ClientStatus): {
         Active: null
     } : value;
 }
-function to_candid_variant_n107(value: DocumentStatus): {
+function to_candid_variant_n109(value: DocumentStatus): {
     Active: null;
 } | {
     Deleted: null;
@@ -1889,7 +1935,7 @@ function to_candid_variant_n4(value: Role): {
         Partner: null
     } : value;
 }
-function to_candid_variant_n64(value: {
+function to_candid_variant_n66(value: {
     __kind__: "Any";
     Any: null;
 } | {
@@ -1935,7 +1981,7 @@ function to_candid_variant_n7(value: ClientType): {
         Other: null
     } : value;
 }
-function to_candid_variant_n73(value: LibraryItemStatus): {
+function to_candid_variant_n75(value: LibraryItemStatus): {
     Active: null;
 } | {
     Archived: null;
@@ -1950,7 +1996,7 @@ function to_candid_variant_n73(value: LibraryItemStatus): {
         Deleted: null
     } : value;
 }
-function to_candid_variant_n76(value: MatterStatus): {
+function to_candid_variant_n78(value: MatterStatus): {
     OnHold: null;
 } | {
     Open: null;
@@ -1969,7 +2015,7 @@ function to_candid_variant_n76(value: MatterStatus): {
         Archived: null
     } : value;
 }
-function to_candid_variant_n80(value: TopUpRequestStatus): {
+function to_candid_variant_n82(value: TopUpRequestStatus): {
     Cancelled: null;
 } | {
     Fulfilled: null;
@@ -1984,7 +2030,7 @@ function to_candid_variant_n80(value: TopUpRequestStatus): {
         Pending: null
     } : value;
 }
-function to_candid_variant_n89(value: FileAccessKind): {
+function to_candid_variant_n91(value: FileAccessKind): {
     View: null;
 } | {
     Download: null;
