@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { useParams } from "react-router-dom";
+import { useParams, Link } from "react-router-dom";
 import { useClients } from "../hooks/useClients";
 import { useAuth } from "../auth/useAuth";
 import { Role, ClientType, ClientStatus } from "../backend/api/backend";
@@ -91,6 +91,9 @@ export default function ClientDetailPage() {
 
   return (
     <div className="detail-page">
+      <div style={{ fontSize: "0.8rem", color: "#888", marginBottom: "0.5rem" }}>
+        <Link to="/clients" style={{ color: "#888" }}>← Clients</Link>
+      </div>
       <div className="page-header">
         <div>
           <div className="page-title">{client.name}</div>

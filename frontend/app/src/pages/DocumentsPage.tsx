@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
-import { useParams } from "react-router-dom";
+import { useParams, Link } from "react-router-dom";
 import { useDocuments } from "../hooks/useDocuments";
+import { useMatters } from "../hooks/useMatters";
 import { useAuth } from "../auth/useAuth";
 import { Role, DocumentStatus } from "../backend/api/backend";
 import type { Document, DocumentVersion, DocumentSearchResult } from "../backend/api/backend";
@@ -29,6 +30,14 @@ export default function DocumentsPage() {
   const { role, actor } = useAuth();
   const { openViewer } = useFileViewer();
   const { documents, loading, error, load, upload, download, deleteDocument, getVersion } = useDocuments(matterId);
+  const { getMatter } = useMatters();
+  const [matterTitle, setMatterTitle] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (id) {
+      getMatter(BigInt(id)).then(m => { if (m) setMatterTitle(m.title); });
+    }
+  }, [id]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const fileRef = useRef<HTMLInputElement>(null);
   const [uploadError, setUploadError] = useState<string | null>(null);
@@ -125,8 +134,11 @@ export default function DocumentsPage() {
 
   return (
     <div>
+      <div style={{ fontSize: "0.8rem", color: "#888", marginBottom: "0.5rem" }}>
+        <Link to={`/matters/${id}`} style={{ color: "#888" }}>← Matter {matterTitle ?? id}</Link>
+      </div>
       <div className="page-header">
-        <div className="page-title">Documents — Matter {id}</div>
+        <div className="page-title">Documents — {matterTitle ?? `Matter ${id}`}</div>
         <button className="add-btn" onClick={() => fileRef.current?.click()} disabled={uploading}>
           <i className="ti ti-upload" /> Upload document
         </button>
@@ -193,10 +205,10 @@ export default function DocumentsPage() {
         <table className="tp-table">
           <thead>
             <tr>
-              <th>File</th>
-              <th>Type</th>
-              <th>Size</th>
-              <th>Status</th>
+              <th style={{ textTransform: "none" }}>File</th>
+              <th style={{ textTransform: "none" }}>Type</th>
+              <th style={{ textTransform: "none" }}>Size</th>
+              <th style={{ textTransform: "none" }}>Status</th>
               <th></th>
             </tr>
           </thead>

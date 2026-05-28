@@ -1,4 +1,4 @@
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import { useAudit } from "../hooks/useAudit";
 import LoadingSpinner from "../components/LoadingSpinner";
 import ErrorMessage from "../components/ErrorMessage";
@@ -38,8 +38,19 @@ function fmtAction(raw: string): string {
 
 export default function AuditPage() {
   const { entries, loading, error, hasMore, loadFirst, loadMore } = useAudit();
+  const [actionFilter, setActionFilter] = useState("");
+  const [fromDate, setFromDate] = useState("");
+  const [toDate, setToDate] = useState("");
 
   useEffect(() => { void loadFirst(); }, [loadFirst]);
+
+  const displayedEntries = [...entries].reverse().filter(e => {
+    if (actionFilter.trim() && !fmtAction(e.action).toLowerCase().includes(actionFilter.trim().toLowerCase())) return false;
+    const ms = Number(e.timestamp / 1_000_000n);
+    if (fromDate && ms < new Date(fromDate).getTime()) return false;
+    if (toDate && ms > new Date(toDate + "T23:59:59").getTime()) return false;
+    return true;
+  });
 
   function formatTime(ns: bigint) {
     const ms = Number(ns / 1_000_000n);
@@ -60,19 +71,50 @@ export default function AuditPage() {
       {error && <ErrorMessage message={error} />}
       {loading && entries.length === 0 && <LoadingSpinner />}
 
+      <div style={{ display: "flex", gap: 8, marginBottom: 12, flexWrap: "wrap", alignItems: "flex-end" }}>
+        <input
+          className="tp-input"
+          style={{ flex: "1 1 200px" }}
+          placeholder="Filter by action…"
+          value={actionFilter}
+          onChange={e => setActionFilter(e.target.value)}
+        />
+        <input
+          className="tp-input"
+          type="date"
+          style={{ flex: "0 0 150px" }}
+          value={fromDate}
+          onChange={e => setFromDate(e.target.value)}
+          title="From date"
+        />
+        <input
+          className="tp-input"
+          type="date"
+          style={{ flex: "0 0 150px" }}
+          value={toDate}
+          onChange={e => setToDate(e.target.value)}
+          title="To date"
+        />
+        {(actionFilter || fromDate || toDate) && (
+          <button className="btn btn-neutral btn-sm" onClick={() => { setActionFilter(""); setFromDate(""); setToDate(""); }}>
+            Clear
+          </button>
+        )}
+      </div>
+
       <div className="card">
         <table className="tp-table">
           <thead>
             <tr>
-              <th>Time</th>
-              <th>Caller</th>
-              <th>Action</th>
-              <th>Target</th>
-              <th>Outcome</th>
+              <th style={{ textTransform: "none" }}>Time</th>
+              <th style={{ textTransform: "none" }}>Caller</th>
+              <th style={{ textTransform: "none" }}>Action</th>
+              <th style={{ textTransform: "none" }}>Target</th>
+              <th style={{ textTransform: "none" }}>Outcome</th>
             </tr>
           </thead>
           <tbody>
-            {[...entries].reverse().map(e => (
+            {displayedEntries.map(e => (
               <tr key={String(e.id)}>
                 <td className="mono" style={{ whiteSpace: "nowrap" }}>{formatTime(e.timestamp)}</td>
                 <td><span className="mono">{truncate(e.caller.toText())}</span></td>
@@ -86,8 +128,8 @@ export default function AuditPage() {
                 </td>
               </tr>
             ))}
-            {!loading && entries.length === 0 && (
-              <tr><td colSpan={5} className="empty-state">No entries.</td></tr>
+            {!loading && displayedEntries.length === 0 && (
+              <tr><td colSpan={5} className="empty-state">{entries.length === 0 ? "No entries." : "No matching entries."}</td></tr>
             )}
           </tbody>
         </table>

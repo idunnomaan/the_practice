@@ -70,6 +70,9 @@ export default function MatterDetailPage() {
 
   return (
     <div className="detail-page">
+      <div style={{ fontSize: "0.8rem", color: "#888", marginBottom: "0.5rem" }}>
+        <Link to="/matters" style={{ color: "#888" }}>← Matters</Link>
+      </div>
       <div className="page-header">
         <div>
           <div className="page-title">{matter.title}</div>
@@ -93,13 +96,13 @@ export default function MatterDetailPage() {
         {matter.status === MatterStatus.Open && (
           <>
             <button className="btn btn-warning btn-sm" onClick={() => { void handleTransition(putOnHold); }} disabled={submitting}>Put On Hold</button>
-            <button className="btn btn-danger btn-sm" onClick={() => { void handleTransition(closeMatter); }} disabled={submitting}>Close</button>
+            <button className="btn btn-neutral btn-sm" onClick={() => { void handleTransition(closeMatter); }} disabled={submitting}>Close</button>
           </>
         )}
         {matter.status === MatterStatus.OnHold && (
           <>
             <button className="btn btn-success btn-sm" onClick={() => { void handleTransition(resumeMatter); }} disabled={submitting}>Resume</button>
-            <button className="btn btn-danger btn-sm" onClick={() => { void handleTransition(closeMatter); }} disabled={submitting}>Close</button>
+            <button className="btn btn-neutral btn-sm" onClick={() => { void handleTransition(closeMatter); }} disabled={submitting}>Close</button>
           </>
         )}
         {matter.status === MatterStatus.Closed && (
@@ -116,13 +119,14 @@ export default function MatterDetailPage() {
       {!editing ? (
         <>
           <div className="card" style={{ padding: "16px 20px", marginBottom: 18 }}>
+            <div className="detail-field"><strong>Created</strong>{new Date(Number(matter.createdAt / 1_000_000n)).toLocaleDateString()}</div>
+            <div className="detail-field">
+              <strong>Partner</strong>
+              {matter.assignedPartner
+                ? (() => { const p = matter.assignedPartner.toText(); return <span className="mono">{p.slice(0, 8)}…{p.slice(-4)}</span>; })()
+                : "Unassigned"}
+            </div>
             <div className="detail-field"><strong>Description</strong>{matter.description || "—"}</div>
-            {matter.assignedPartner && (
-              <div className="detail-field">
-                <strong>Partner</strong>
-                <span className="mono">{matter.assignedPartner.toText()}</span>
-              </div>
-            )}
           </div>
           <button className="btn btn-primary btn-sm" onClick={() => setEditing(true)}>
             <i className="ti ti-pencil" /> Edit

@@ -38,7 +38,7 @@ export default function TopUpRequestForm({ onSubmit }: Props) {
       {error && <div style={{ color: "var(--danger, #ef4444)", fontSize: 13, marginBottom: 8 }}>{error}</div>}
       {success && <div style={{ color: "var(--ok, #22c55e)", fontSize: 13, marginBottom: 8 }}>Request submitted.</div>}
       <div style={{ display: "flex", gap: 8, alignItems: "flex-end", flexWrap: "wrap" }}>
-        <label className="tp-label" style={{ flex: "0 0 140px", marginBottom: 0 }}>
+        <label className="tp-label" style={{ flex: "0 0 140px", marginBottom: 0, textTransform: "none", letterSpacing: 0 }}>
           Amount (T cycles)
           <input
             className="tp-input"
@@ -50,7 +50,7 @@ export default function TopUpRequestForm({ onSubmit }: Props) {
             style={{ width: "100%" }}
           />
         </label>
-        <label className="tp-label" style={{ flex: 1, minWidth: 160, marginBottom: 0 }}>
+        <label className="tp-label" style={{ flex: 1, minWidth: 160, marginBottom: 0, textTransform: "none", letterSpacing: 0 }}>
           Note (optional, max 1024 chars)
           <input
             className="tp-input"

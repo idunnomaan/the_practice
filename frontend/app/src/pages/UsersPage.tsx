@@ -20,6 +20,7 @@ export default function UsersPage() {
   const [submitting, setSubmitting] = useState(false);
   const [actionError, setActionError] = useState<string | null>(null);
   const [roleToast, setRoleToast] = useState(false);
+  const [showAddUser, setShowAddUser] = useState(false);
 
   useEffect(() => { void load(); }, [load]);
 
@@ -33,6 +34,7 @@ export default function UsersPage() {
       if (!result) return;
       if (result.__kind__ === "ok") {
         setNewPrincipal(""); setNewRole(Role.Staff);
+        setShowAddUser(false);
         void load();
       } else {
         setFormError(result.err);
@@ -42,6 +44,13 @@ export default function UsersPage() {
     } finally {
       setSubmitting(false);
     }
+  }
+
+  function closeModal() {
+    setShowAddUser(false);
+    setNewPrincipal("");
+    setNewRole(Role.Staff);
+    setFormError(null);
   }
 
   async function handleAction(fn: (p: Principal) => Promise<{ __kind__: "ok"; ok: null } | { __kind__: "err"; err: string } | null>, p: Principal) {
@@ -77,29 +86,43 @@ export default function UsersPage() {
           Role updated
         </div>
       )}
+
+      {showAddUser && (
+        <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.4)", zIndex: 200, display: "flex", alignItems: "center", justifyContent: "center" }}>
+          <div style={{ background: "var(--surf)", border: "0.5px solid var(--bd)", borderRadius: 12, padding: 24, minWidth: 340, maxWidth: 480, width: "90%" }}>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16 }}>
+              <h3 style={{ margin: 0, fontSize: 16 }}>Add User</h3>
+              <button className="btn btn-neutral btn-sm" onClick={closeModal}>✕</button>
+            </div>
+            <form className="tp-form" onSubmit={(e) => { void handleAdd(e); }}>
+              {formError && <ErrorMessage message={formError} onDismiss={() => setFormError(null)} />}
+              <label className="tp-label" style={{ textTransform: "none", letterSpacing: 0, fontSize: 13, color: "var(--tx)" }}>Principal *
+                <input className="tp-input" value={newPrincipal} onChange={e => setNewPrincipal(e.target.value)} placeholder="xxxxx-xxxxx-…" />
+              </label>
+              <label className="tp-label" style={{ textTransform: "none", letterSpacing: 0, fontSize: 13, color: "var(--tx)" }}>Role
+                <select className="tp-input" value={newRole} onChange={e => setNewRole(e.target.value as Role)}>
+                  <option value={Role.Partner}>Partner</option>
+                  <option value={Role.Associate}>Associate</option>
+                  <option value={Role.Staff}>Staff</option>
+                </select>
+              </label>
+              <div style={{ display: "flex", gap: 8, marginTop: 4 }}>
+                <button type="submit" className="btn btn-primary" disabled={submitting}>
+                  {submitting ? "Adding…" : "Add User"}
+                </button>
+                <button type="button" className="btn btn-neutral" onClick={closeModal}>Cancel</button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
       <div className="page-header">
         <div className="page-title">User Management</div>
+        <button className="add-btn" onClick={() => setShowAddUser(true)}>
+          <i className="ti ti-user-plus" /> Add User
+        </button>
       </div>
-
-      <form className="tp-form" style={{ maxWidth: 500 }} onSubmit={(e) => { void handleAdd(e); }}>
-        <h3>Add User</h3>
-        {formError && <ErrorMessage message={formError} onDismiss={() => setFormError(null)} />}
-        <label className="tp-label">Principal *
-          <input className="tp-input" value={newPrincipal} onChange={e => setNewPrincipal(e.target.value)} placeholder="xxxxx-xxxxx-…" />
-        </label>
-        <label className="tp-label">Role
-          <select className="tp-input" value={newRole} onChange={e => setNewRole(e.target.value as Role)}>
-            <option value={Role.Partner}>Partner</option>
-            <option value={Role.Associate}>Associate</option>
-            <option value={Role.Staff}>Staff</option>
-          </select>
-        </label>
-        <div>
-          <button type="submit" className="btn btn-primary" disabled={submitting}>
-            {submitting ? "Adding…" : "Add User"}
-          </button>
-        </div>
-      </form>
 
       {actionError && <ErrorMessage message={actionError} onDismiss={() => setActionError(null)} />}
       {error && <ErrorMessage message={error} />}
@@ -137,7 +160,9 @@ export default function UsersPage() {
                         {rec.suspended ? (
                           <button className="btn btn-success btn-sm" onClick={() => { void handleAction(unsuspendUser, p); }}>Reactivate</button>
                         ) : (
-                          <button className="btn btn-danger btn-sm" onClick={() => { void handleAction(suspendUser, p); }}>Suspend</button>
+                          <button className="btn btn-danger btn-sm"
+                            style={{ background: "transparent", border: "1px solid var(--danger, #ef4444)", color: "var(--danger, #ef4444)" }}
+                            onClick={() => { void handleAction(suspendUser, p); }}>Suspend</button>
                         )}
                         <select
                           className="tp-input"
