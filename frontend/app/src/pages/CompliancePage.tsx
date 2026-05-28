@@ -10,6 +10,22 @@ const FIRM_NAME = "The Practice";
 const OPERATOR = "Onchain Inc.";
 const INFRASTRUCTURE = "ICP Mainnet";
 
+// Dark palette — applied inline so this page is always dark regardless of the app's light/dark toggle.
+const D = {
+  bg:          "#0b1120",
+  surface:     "#101826",
+  text:        "#e8ecf4",
+  muted:       "#7a8aa8",
+  label:       "#5b7fa6",
+  accent:      "#4a9eff",
+  border:      "rgba(255,255,255,0.07)",
+  badgeText:   "#4a9e6a",
+  badgeBg:     "#0a1e14",
+  badgeBorder: "#1a4a30",
+  pillText:    "#4a7a5c",
+  pillBg:      "#0a1e14",
+} as const;
+
 interface Metrics {
   auditEntryCount: number;
   lastAuditTimestamp: bigint | null;
@@ -108,6 +124,7 @@ function generatePDF(
 ) {
   const doc = new jsPDF({ orientation: "portrait", unit: "mm", format: "a4" });
   const pageW = 210;
+  const pageH = 297;
   const margin = 20;
   const contentW = pageW - margin * 2;
   let y = margin;
@@ -118,22 +135,29 @@ function generatePDF(
     Number(payload.validUntil / 1_000_000n),
   ).toLocaleDateString();
 
+  // Dark background fill helper — called for page 1 and every addPage()
+  function fillPageBg() {
+    doc.setFillColor(11, 17, 32);
+    doc.rect(0, 0, pageW, pageH, "F");
+  }
+  fillPageBg();
+
   // ── Header
   doc.setFont("helvetica", "bold");
   doc.setFontSize(20);
-  doc.setTextColor(30, 30, 30);
+  doc.setTextColor(232, 236, 244);
   doc.text("CERTIFICATE OF COMPLIANCE", pageW / 2, y, { align: "center" });
   y += 8;
   doc.setFont("helvetica", "italic");
   doc.setFontSize(11);
-  doc.setTextColor(80, 80, 80);
+  doc.setTextColor(74, 158, 255);
   doc.text("PDPA Compliance, by architecture.", pageW / 2, y, {
     align: "center",
   });
   y += 6;
   doc.setFont("helvetica", "normal");
   doc.setFontSize(9);
-  doc.setTextColor(100, 100, 100);
+  doc.setTextColor(122, 138, 168);
   const subtitle =
     "This certifies that the data infrastructure operated by " +
     FIRM_NAME +
@@ -143,14 +167,14 @@ function generatePDF(
   y += subtitleLines.length * 4 + 8;
 
   // ── Divider
-  doc.setDrawColor(200, 200, 200);
+  doc.setDrawColor(30, 50, 80);
   doc.line(margin, y, pageW - margin, y);
   y += 8;
 
   // ── Facts grid
   doc.setFont("helvetica", "bold");
   doc.setFontSize(9);
-  doc.setTextColor(120, 120, 120);
+  doc.setTextColor(91, 127, 166);
   doc.text("CERTIFICATE DETAILS", margin, y);
   y += 6;
 
@@ -171,13 +195,13 @@ function generatePDF(
     const right = facts[i + 1];
     doc.setFont("helvetica", "bold");
     doc.setFontSize(8);
-    doc.setTextColor(140, 140, 140);
+    doc.setTextColor(91, 127, 166);
     doc.text(left[0], margin, y);
     if (right) doc.text(right[0], margin + colW + 10, y);
     y += 4;
     doc.setFont("helvetica", "normal");
     doc.setFontSize(9);
-    doc.setTextColor(30, 30, 30);
+    doc.setTextColor(232, 236, 244);
     doc.text(left[1], margin, y);
     if (right) doc.text(right[1], margin + colW + 10, y);
     y += 6;
@@ -185,42 +209,43 @@ function generatePDF(
   y += 4;
 
   // ── Divider
-  doc.setDrawColor(200, 200, 200);
+  doc.setDrawColor(30, 50, 80);
   doc.line(margin, y, pageW - margin, y);
   y += 8;
 
   // ── Compliance Matrix
   doc.setFont("helvetica", "bold");
   doc.setFontSize(9);
-  doc.setTextColor(120, 120, 120);
+  doc.setTextColor(91, 127, 166);
   doc.text("PDPA COMPLIANCE MATRIX — SRI LANKA PERSONAL DATA PROTECTION ACT NO. 9 OF 2022", margin, y);
   y += 7;
 
   for (const row of COMPLIANCE_MATRIX) {
     if (y > 250) {
       doc.addPage();
+      fillPageBg();
       y = margin;
     }
     doc.setFont("helvetica", "bold");
     doc.setFontSize(9);
-    doc.setTextColor(30, 30, 30);
+    doc.setTextColor(232, 236, 244);
     doc.text(row.section + "  " + row.title, margin, y);
     doc.setFont("helvetica", "normal");
     doc.setFontSize(8);
-    doc.setTextColor(80, 80, 80);
+    doc.setTextColor(122, 138, 168);
     const lines = doc.splitTextToSize(row.description, contentW - 30);
     doc.text(lines, margin + 2, y + 4);
     const descH = lines.length * 3.5;
     // Classification badge
     doc.setFont("helvetica", "bold");
     doc.setFontSize(7);
-    doc.setTextColor(60, 100, 180);
+    doc.setTextColor(74, 122, 92);
     doc.text("[" + row.classification + "]", pageW - margin - 2, y, {
       align: "right",
     });
     // Enforced by Design badge
-    doc.setTextColor(30, 140, 80);
-    doc.text("Enforced by Design", pageW - margin - 2, y + 4, {
+    doc.setTextColor(74, 158, 106);
+    doc.text("✓ Enforced by Design", pageW - margin - 2, y + 4, {
       align: "right",
     });
     y += descH + 10;
@@ -229,14 +254,15 @@ function generatePDF(
   // ── Live Metrics
   if (y > 240) {
     doc.addPage();
+    fillPageBg();
     y = margin;
   }
-  doc.setDrawColor(200, 200, 200);
+  doc.setDrawColor(30, 50, 80);
   doc.line(margin, y, pageW - margin, y);
   y += 8;
   doc.setFont("helvetica", "bold");
   doc.setFontSize(9);
-  doc.setTextColor(120, 120, 120);
+  doc.setTextColor(91, 127, 166);
   doc.text("LIVE COMPLIANCE METRICS", margin, y);
   y += 6;
 
@@ -257,13 +283,13 @@ function generatePDF(
     const right = metricData[i + 1];
     doc.setFont("helvetica", "bold");
     doc.setFontSize(8);
-    doc.setTextColor(140, 140, 140);
+    doc.setTextColor(91, 127, 166);
     doc.text(left[0], margin, y);
     if (right) doc.text(right[0], margin + colW + 10, y);
     y += 4;
     doc.setFont("helvetica", "normal");
     doc.setFontSize(10);
-    doc.setTextColor(30, 30, 30);
+    doc.setTextColor(232, 236, 244);
     doc.text(left[1], margin, y);
     if (right) doc.text(right[1], margin + colW + 10, y);
     y += 7;
@@ -273,14 +299,15 @@ function generatePDF(
   // ── Cryptographic Seal
   if (y > 220) {
     doc.addPage();
+    fillPageBg();
     y = margin;
   }
-  doc.setDrawColor(200, 200, 200);
+  doc.setDrawColor(30, 50, 80);
   doc.line(margin, y, pageW - margin, y);
   y += 8;
   doc.setFont("helvetica", "bold");
   doc.setFontSize(9);
-  doc.setTextColor(120, 120, 120);
+  doc.setTextColor(91, 127, 166);
   doc.text("CRYPTOGRAPHIC SEAL", margin, y);
   y += 6;
 
@@ -301,10 +328,10 @@ function generatePDF(
   for (const [label, value] of sealLines) {
     doc.setFont("helvetica", "bold");
     doc.setFontSize(8);
-    doc.setTextColor(100, 100, 100);
+    doc.setTextColor(91, 127, 166);
     doc.text(label, margin, y);
     doc.setFont("helvetica", "normal");
-    doc.setTextColor(30, 30, 30);
+    doc.setTextColor(232, 236, 244);
     const valLines = doc.splitTextToSize(value, contentW - 42);
     doc.text(valLines, margin + 40, y);
     y += valLines.length * 4 + 1;
@@ -313,7 +340,7 @@ function generatePDF(
 
   doc.setFont("helvetica", "italic");
   doc.setFontSize(7);
-  doc.setTextColor(130, 130, 130);
+  doc.setTextColor(122, 138, 168);
   const verifyText =
     'To verify: reproduce the canonical message "PDPA-CERT|{id}|{issuedAt}|..." and verify the signature against the public key using secp256k1 ECDSA.';
   const verifyLines = doc.splitTextToSize(verifyText, contentW);
@@ -323,13 +350,14 @@ function generatePDF(
   // ── Footer
   if (y > 275) {
     doc.addPage();
+    fillPageBg();
     y = 280;
   }
-  doc.setDrawColor(200, 200, 200);
+  doc.setDrawColor(30, 50, 80);
   doc.line(margin, 285, pageW - margin, 285);
   doc.setFont("helvetica", "normal");
   doc.setFontSize(8);
-  doc.setTextColor(140, 140, 140);
+  doc.setTextColor(91, 127, 166);
   doc.text(
     "Generated by The Practice · Onchain Inc. · ICP Mainnet",
     pageW / 2,
@@ -420,7 +448,7 @@ export default function CompliancePage() {
     return (
       <div>
         <div className="page-header"><div className="page-title">Compliance</div></div>
-        <div style={{ color: "var(--tx2)", fontSize: 14 }}>
+        <div style={{ color: D.muted, fontSize: 14 }}>
           Access restricted to master controller and operations principal.
         </div>
       </div>
@@ -435,19 +463,38 @@ export default function CompliancePage() {
     today.getDate(),
   ).toLocaleDateString();
 
+  // Shared card surface style — overrides the .card CSS-variable-based defaults.
+  const cardSurface = {
+    background: D.surface,
+    border: `1px solid ${D.border}`,
+    borderRadius: 12,
+  };
+
+  // Shared section label style — overrides .section-head CSS-variable-based defaults.
+  const sectionLabel = {
+    fontSize: 10,
+    fontWeight: 700 as const,
+    letterSpacing: "0.14em",
+    textTransform: "uppercase" as const,
+    color: D.label,
+    marginBottom: 16,
+  };
+
   return (
-    <div>
+    // Negative margin bleeds the dark bg to the edges of .tp-main's 28px padding.
+    <div style={{ margin: "-28px", padding: "28px", minHeight: "100%", background: D.bg, color: D.text }}>
+
       {/* ── Header ─────────────────────────────────────────────────────── */}
       <div style={{ textAlign: "center", marginBottom: 40, padding: "32px 0 0" }}>
-        <div style={{ fontSize: 11, letterSpacing: "0.28em", textTransform: "uppercase", color: "var(--tx2)", fontWeight: 600, marginBottom: 16 }}>
+        <div style={{ fontSize: 11, letterSpacing: "0.28em", textTransform: "uppercase", color: D.label, fontWeight: 600, marginBottom: 16 }}>
           CERTIFICATE OF COMPLIANCE
         </div>
-        <div style={{ fontSize: 40, fontWeight: 300, lineHeight: 1.1, marginBottom: 12, color: "var(--tx)", letterSpacing: "-0.02em" }}>
+        <div style={{ fontSize: 40, fontWeight: 300, lineHeight: 1.1, marginBottom: 12, color: D.text, letterSpacing: "-0.02em" }}>
           PDPA Compliance,{" "}
-          <span style={{ fontStyle: "italic", color: "var(--accent, #82B5FF)" }}>by architecture.</span>
+          <span style={{ fontStyle: "italic", color: D.accent }}>by architecture.</span>
         </div>
-        <div style={{ fontSize: 14, color: "var(--tx2)", maxWidth: 560, margin: "0 auto", lineHeight: 1.6, fontStyle: "italic" }}>
-          This certifies that the data infrastructure operated by <strong>{FIRM_NAME}</strong> satisfies
+        <div style={{ fontSize: 14, color: D.muted, maxWidth: 560, margin: "0 auto", lineHeight: 1.6, fontStyle: "italic" }}>
+          This certifies that the data infrastructure operated by <strong style={{ color: D.text }}>{FIRM_NAME}</strong> satisfies
           the substantive requirements of the Sri Lanka Personal Data Protection Act, No. 9 of 2022, as amended.
         </div>
       </div>
@@ -456,25 +503,25 @@ export default function CompliancePage() {
       <div style={{ display: "flex", justifyContent: "center", marginBottom: 40 }}>
         <div style={{
           width: 180, height: 180, borderRadius: "50%",
-          border: "1px solid var(--accent, #82B5FF)",
+          border: `1px solid ${D.accent}`,
           display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center",
           position: "relative", gap: 8,
-          background: "rgba(130,181,255,0.05)",
-          boxShadow: "0 4px 24px rgba(0,0,0,0.18)",
+          background: "rgba(74,158,255,0.05)",
+          boxShadow: "0 4px 32px rgba(0,0,0,0.5)",
         }}>
           <div style={{
             width: 52, height: 52, borderRadius: "50%",
-            background: "var(--accent, #82B5FF)",
+            background: D.accent,
             display: "flex", alignItems: "center", justifyContent: "center",
-            boxShadow: "0 0 20px rgba(130,181,255,0.4)",
+            boxShadow: "0 0 20px rgba(74,158,255,0.4)",
           }}>
             <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
               <polyline points="20 6 9 17 4 12" />
             </svg>
           </div>
           <div style={{ textAlign: "center", lineHeight: 1.35 }}>
-            <div style={{ fontWeight: 600, fontSize: 12, letterSpacing: "0.08em", color: "var(--tx)" }}>COMPLIANT</div>
-            <div style={{ fontSize: 11, color: "var(--tx2)" }}>{todayStr}</div>
+            <div style={{ fontWeight: 600, fontSize: 12, letterSpacing: "0.08em", color: D.text }}>COMPLIANT</div>
+            <div style={{ fontSize: 11, color: D.muted }}>{todayStr}</div>
           </div>
         </div>
       </div>
@@ -482,8 +529,8 @@ export default function CompliancePage() {
       {loading && <LoadingSpinner />}
 
       {/* ── Facts Panel ────────────────────────────────────────────────── */}
-      <div className="card" style={{ padding: 24, marginBottom: 24 }}>
-        <div className="section-head">Certificate Details</div>
+      <div style={{ ...cardSurface, padding: 24, marginBottom: 24 }}>
+        <div style={sectionLabel}>Certificate Details</div>
         <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "12px 40px" }}>
           {([
             ["FIRM", FIRM_NAME],
@@ -495,11 +542,11 @@ export default function CompliancePage() {
             ["INFRASTRUCTURE", INFRASTRUCTURE],
             ["OPERATOR", OPERATOR],
           ] as [string, string][]).map(([label, value]) => (
-            <div key={label} style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", paddingBottom: 10, borderBottom: "0.5px solid var(--bd)" }}>
-              <span style={{ fontSize: 10, fontWeight: 600, letterSpacing: "0.1em", textTransform: "uppercase", color: "var(--tx2)" }}>
+            <div key={label} style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", paddingBottom: 10, borderBottom: `0.5px solid ${D.border}` }}>
+              <span style={{ fontSize: 10, fontWeight: 600, letterSpacing: "0.1em", textTransform: "uppercase", color: D.muted }}>
                 {label}
               </span>
-              <span className="mono" style={{ fontSize: 12, color: "var(--tx)" }}>
+              <span style={{ fontFamily: "'SF Mono', 'Consolas', monospace", fontSize: 12, color: D.accent }}>
                 {value}
               </span>
             </div>
@@ -509,27 +556,27 @@ export default function CompliancePage() {
 
       {/* ── Compliance Matrix ───────────────────────────────────────────── */}
       <div style={{ marginBottom: 24 }}>
-        <div className="section-head" style={{ marginBottom: 16 }}>PDPA Requirements — Sri Lanka Personal Data Protection Act No. 9 of 2022</div>
+        <div style={{ ...sectionLabel, marginBottom: 16 }}>PDPA Requirements — Sri Lanka Personal Data Protection Act No. 9 of 2022</div>
         <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
           {COMPLIANCE_MATRIX.map((row) => (
-            <div key={row.section} className="card" style={{ padding: "18px 22px", display: "grid", gridTemplateColumns: "48px 1fr auto", gap: 16, alignItems: "start" }}>
-              <div style={{ fontWeight: 700, fontSize: 12, color: "var(--accent, #82B5FF)", paddingTop: 2 }}>
+            <div key={row.section} style={{ ...cardSurface, padding: "18px 22px", display: "grid", gridTemplateColumns: "48px 1fr auto", gap: 16, alignItems: "start" }}>
+              <div style={{ fontWeight: 700, fontSize: 12, color: D.accent, paddingTop: 2 }}>
                 {row.section}
               </div>
               <div>
-                <div style={{ fontWeight: 600, fontSize: 13, marginBottom: 4, color: "var(--tx)" }}>
+                <div style={{ fontWeight: 600, fontSize: 13, marginBottom: 4, color: D.text }}>
                   {row.title}
                 </div>
-                <div style={{ fontSize: 12, color: "var(--tx2)", lineHeight: 1.55 }}>
+                <div style={{ fontSize: 12, color: D.muted, lineHeight: 1.55 }}>
                   {row.description}
                 </div>
-                <div style={{ marginTop: 8, display: "inline-block", fontSize: 10, padding: "2px 8px", borderRadius: 4, border: "1px solid var(--bd)", color: "var(--tx2)", letterSpacing: "0.05em" }}>
+                <div style={{ marginTop: 8, display: "inline-block", fontSize: 10, padding: "2px 8px", borderRadius: 4, background: D.pillBg, color: D.pillText, letterSpacing: "0.05em", border: `1px solid ${D.badgeBorder}` }}>
                   {row.classification}
                 </div>
               </div>
               <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: 4, paddingTop: 2 }}>
-                <div style={{ fontSize: 10, padding: "3px 10px", borderRadius: 4, background: "rgba(130,181,255,0.1)", color: "var(--accent, #82B5FF)", fontWeight: 600, letterSpacing: "0.04em", whiteSpace: "nowrap", border: "1px solid rgba(130,181,255,0.2)" }}>
-                  Enforced by Design
+                <div style={{ fontSize: 10, padding: "3px 10px", borderRadius: 4, background: D.badgeBg, color: D.badgeText, fontWeight: 600, letterSpacing: "0.04em", whiteSpace: "nowrap", border: `1px solid ${D.badgeBorder}` }}>
+                  ✓ Enforced by Design
                 </div>
               </div>
             </div>
@@ -538,23 +585,23 @@ export default function CompliancePage() {
       </div>
 
       {/* ── Live Metrics ────────────────────────────────────────────────── */}
-      <div className="card" style={{ padding: 24, marginBottom: 24 }}>
-        <div className="section-head" style={{ marginBottom: 16 }}>Live Compliance Metrics</div>
+      <div style={{ ...cardSurface, padding: 24, marginBottom: 24 }}>
+        <div style={sectionLabel}>Live Compliance Metrics</div>
         {metricsError && !metrics && (
-          <div style={{ color: "var(--tx2)", fontSize: 13, marginBottom: 12 }}>{metricsError}</div>
+          <div style={{ color: D.muted, fontSize: 13, marginBottom: 12 }}>{metricsError}</div>
         )}
         <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr 1fr", gap: 16 }}>
           {([
-            ["AUDIT ENTRIES (TOTAL)", metrics ? String(metrics.auditEntryCount) : "—", false],
-            ["LAST AUDIT ENTRY", metrics?.lastAuditTimestamp ? fmtNsDate(metrics.lastAuditTimestamp) : "—", false],
-            ["UNAUTHORIZED ATTEMPTS", metrics ? String(metrics.unauthorizedAttempts) : "—", false],
-            ["REPORTED BREACHES", "0", false],
-          ] as [string, string, boolean][]).map(([label, value]) => (
-            <div key={label} style={{ textAlign: "center", padding: "16px 12px", borderRadius: 10, border: "0.5px solid var(--bd)", background: "var(--bg2, rgba(255,255,255,0.03))" }}>
-              <div style={{ fontSize: 10, fontWeight: 600, letterSpacing: "0.1em", textTransform: "uppercase", color: "var(--tx2)", marginBottom: 8 }}>
+            ["AUDIT ENTRIES (TOTAL)", metrics ? String(metrics.auditEntryCount) : "—"],
+            ["LAST AUDIT ENTRY", metrics?.lastAuditTimestamp ? fmtNsDate(metrics.lastAuditTimestamp) : "—"],
+            ["UNAUTHORIZED ATTEMPTS", metrics ? String(metrics.unauthorizedAttempts) : "—"],
+            ["REPORTED BREACHES", "0"],
+          ] as [string, string][]).map(([label, value]) => (
+            <div key={label} style={{ textAlign: "center", padding: "16px 12px", borderRadius: 10, border: `0.5px solid ${D.border}`, background: "rgba(255,255,255,0.02)" }}>
+              <div style={{ fontSize: 10, fontWeight: 600, letterSpacing: "0.1em", textTransform: "uppercase", color: D.muted, marginBottom: 8 }}>
                 {label}
               </div>
-              <div style={{ fontSize: 22, fontWeight: 300, color: "var(--tx)" }}>
+              <div style={{ fontSize: 22, fontWeight: 300, color: D.text }}>
                 {value}
               </div>
             </div>
@@ -563,13 +610,13 @@ export default function CompliancePage() {
       </div>
 
       {/* ── Generate PDF ─────────────────────────────────────────────────── */}
-      <div className="card" style={{ padding: 20, display: "flex", alignItems: "center", gap: 16, marginBottom: 40 }}>
+      <div style={{ ...cardSurface, padding: 20, display: "flex", alignItems: "center", gap: 16, marginBottom: 40 }}>
         <div style={{ flex: 1 }}>
-          <div style={{ fontSize: 13, fontWeight: 600, color: "var(--tx)", marginBottom: 2 }}>
-            Generate sealed PDF
+          <div style={{ fontSize: 13, fontWeight: 600, color: D.text, marginBottom: 2 }}>
+            Need this for a regulator or audit?
           </div>
-          <div style={{ fontSize: 12, color: "var(--tx2)" }}>
-            Signs the certificate with the canister's threshold ECDSA key. Takes 3–5 seconds.
+          <div style={{ fontSize: 12, color: D.muted }}>
+            Generates a signed PDF with current verification data and audit excerpts.
           </div>
         </div>
         {genError && <ErrorMessage message={genError} onDismiss={() => setGenError(null)} />}
@@ -579,7 +626,7 @@ export default function CompliancePage() {
           onClick={() => { void handleGenerate(); }}
           style={{ flexShrink: 0 }}
         >
-          {generating ? "Sealing…" : "Generate sealed PDF"}
+          {generating ? "Sealing…" : "Generate PDF"}
         </button>
       </div>
     </div>
