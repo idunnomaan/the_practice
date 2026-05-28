@@ -2868,8 +2868,8 @@ shared(installer) persistent actor class ThePractice(
       key_id = { curve = #secp256k1; name = "key_1" };
     });
 
-    // Sign — requires ~25B cycles on mainnet; (with cycles = n) attaches them to this call
-    let { signature } = await (with cycles = 25_000_000_000) IC_MGMT.sign_with_ecdsa({
+    // Sign — actual cost ~26.15B on 34-node fiduciary subnet; 30B sent as buffer (unused cycles refunded)
+    let { signature } = await (with cycles = 30_000_000_000) IC_MGMT.sign_with_ecdsa({
       message_hash = messageHash;
       derivation_path = [];
       // TODO: switch key name to "dfx_test_key" for local replica testing; use "key_1" for mainnet
