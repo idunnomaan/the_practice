@@ -72,7 +72,7 @@ export default function AuditPage() {
             </tr>
           </thead>
           <tbody>
-            {entries.map(e => (
+            {[...entries].reverse().map(e => (
               <tr key={String(e.id)}>
                 <td className="mono" style={{ whiteSpace: "nowrap" }}>{formatTime(e.timestamp)}</td>
                 <td><span className="mono">{truncate(e.caller.toText())}</span></td>
