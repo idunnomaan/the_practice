@@ -133,6 +133,11 @@ shared(installer) persistent actor class ThePractice(
   var nextLibraryVersionId : Nat = 1;
   var nextLibrarySessionId : Nat = 1;
 
+  // Per-version chunk store for matter documents: versionId → (chunkIndex → Blob).
+  // Populated by finalizeUpload (post-fix) and migrateDocumentVersions.
+  // Versions uploaded before this fix have no entry here; getChunk falls back to blob iteration.
+  let documentVersionChunks = MutMap.empty<Nat, Map.Map<Nat, Blob>>();
+
   // Admin / Cycle Management state — additive, no migration of existing state (EOP handles upgrade).
   let MIN_TOPUP_T_CYCLES : Nat = 1;
   let MAX_TOPUP_T_CYCLES : Nat = 100;
@@ -461,21 +466,27 @@ shared(installer) persistent actor class ThePractice(
             if (doc.status != #Active) return null;
             let count = DocumentModule.expectedChunkCount(version.sizeBytes);
             if (chunkIndex >= count) return null;
-            let (startByte, endByte) = DocumentModule.chunkRange(chunkIndex, version.sizeBytes);
-            // On-demand slice: iterate blob bytes without materialising full [Nat8] array
-            let chunkSize = endByte - startByte;
-            let result = VarArray.repeat<Nat8>(0, chunkSize);
-            var bytePos : Nat = 0;
-            var writePos : Nat = 0;
-            label sliceLoop for (b in version.blob.values()) {
-              if (bytePos >= endByte) break sliceLoop;
-              if (bytePos >= startByte) {
-                result[writePos] := b;
-                writePos += 1;
+            // Fast path: chunk stored separately (post-fix uploads and migrated versions).
+            switch (MutMap.get(documentVersionChunks, Nat.compare, versionId)) {
+              case (?chunks) Map.get(chunks, Nat.compare, chunkIndex);
+              case null {
+                // Legacy path: pre-fix upload stored as monolithic blob; iterate to slice.
+                let (startByte, endByte) = DocumentModule.chunkRange(chunkIndex, version.sizeBytes);
+                let chunkSize = endByte - startByte;
+                let result = VarArray.repeat<Nat8>(0, chunkSize);
+                var bytePos : Nat = 0;
+                var writePos : Nat = 0;
+                label sliceLoop for (b in version.blob.values()) {
+                  if (bytePos >= endByte) break sliceLoop;
+                  if (bytePos >= startByte) {
+                    result[writePos] := b;
+                    writePos += 1;
+                  };
+                  bytePos += 1;
+                };
+                ?Blob.fromVarArray(result)
               };
-              bytePos += 1;
-            };
-            ?Blob.fromVarArray(result)
+            }
           };
         };
       };
@@ -1386,12 +1397,13 @@ shared(installer) persistent actor class ThePractice(
           filename = session.filename;
           contentType = session.contentType;
           sizeBytes = session.totalSizeBytes;
-          blob = assembledBlob;
+          blob = ("" : Blob);
           sha256;
           uploadedAt = now;
           uploadedBy = caller;
           uploadNotes = session.uploadNotes;
         });
+        MutMap.add(documentVersionChunks, Nat.compare, verId, session.chunks);
         MutMap.add(documents, Nat.compare, docId, {
           id = docId;
           matterId = session.matterId;
@@ -1431,12 +1443,13 @@ shared(installer) persistent actor class ThePractice(
           filename = session.filename;
           contentType = session.contentType;
           sizeBytes = session.totalSizeBytes;
-          blob = assembledBlob;
+          blob = ("" : Blob);
           sha256;
           uploadedAt = now;
           uploadedBy = caller;
           uploadNotes = session.uploadNotes;
         });
+        MutMap.add(documentVersionChunks, Nat.compare, verId, session.chunks);
         MutMap.add(documents, Nat.compare, replaceId, { doc with currentVersionId = verId });
         appendVersionToDocument(replaceId, verId);
         (replaceId, verId)
@@ -2218,6 +2231,48 @@ shared(installer) persistent actor class ThePractice(
         migrated += 1;
       };
     };
+    #ok({ migrated; skipped })
+  };
+
+  // ONE-SHOT MIGRATION — call once after upgrading from a pre-fix build.
+  // Splits each DocumentVersion's monolithic blob into per-chunk entries in documentVersionChunks.
+  // Single pass per blob (O(N_bytes) not O(N_chunks * N_bytes)). Idempotent: blob="" entries skipped.
+  // Master controller only; emits one audit entry.
+  public shared ({ caller }) func migrateDocumentVersions() : async Result.Result<{ migrated : Nat; skipped : Nat }, Text> {
+    switch (Auth.requireAuthenticated(caller)) { case (#err(e)) { auditErr(caller, "document.chunks.migrate", null, e); return #err(e) }; case (#ok) {} };
+    switch (Auth.requireMasterController(caller, masterController)) { case (#err(e)) { auditErr(caller, "document.chunks.migrate", null, e); return #err(e) }; case (#ok) {} };
+    var migrated : Nat = 0;
+    var skipped : Nat = 0;
+    for ((vid, version) in MutMap.entries(documentVersions)) {
+      if (version.blob.size() == 0) {
+        skipped += 1;
+      } else {
+        let chunkCount = DocumentModule.expectedChunkCount(version.sizeBytes);
+        // Allocate one buffer per chunk — all up front to enable single-pass write.
+        let buffers = Array.tabulate<[var Nat8]>(chunkCount, func ci {
+          let (startByte, endByte) = DocumentModule.chunkRange(ci, version.sizeBytes);
+          VarArray.repeat<Nat8>(0, endByte - startByte)
+        });
+        // Single pass: write each byte directly into its chunk buffer.
+        var bytePos : Nat = 0;
+        for (b in version.blob.values()) {
+          let ci = bytePos / DocumentModule.CHUNK_SIZE;
+          buffers[ci][bytePos - ci * DocumentModule.CHUNK_SIZE] := b;
+          bytePos += 1;
+        };
+        // Build immutable chunk Map from buffers.
+        var chunkMap = Map.empty<Nat, Blob>();
+        var ci2 : Nat = 0;
+        while (ci2 < chunkCount) {
+          chunkMap := Map.add(chunkMap, Nat.compare, ci2, Blob.fromVarArray(buffers[ci2]));
+          ci2 += 1;
+        };
+        MutMap.add(documentVersionChunks, Nat.compare, vid, chunkMap);
+        MutMap.add(documentVersions, Nat.compare, vid, { version with blob = ("" : Blob) });
+        migrated += 1;
+      };
+    };
+    auditOk(caller, "document.chunks.migrate", null);
     #ok({ migrated; skipped })
   };
 

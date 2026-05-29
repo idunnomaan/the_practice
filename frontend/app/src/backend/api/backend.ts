@@ -206,6 +206,7 @@ export interface ThePracticeInterface {
     listUsers(): Promise<Array<[Principal, UserRecord]>>;
     listVersions(documentId: bigint): Promise<Array<DocumentVersion>>;
     mattersByStatus(): Promise<MatterStatusCounts>;
+    migrateDocumentVersions(): Promise<Result_5>;
     migrateLibraryVersions(): Promise<Result_5>;
     moveFolder(folderId: bigint, newParentId: bigint | null): Promise<Result>;
     moveLibraryItem(itemId: bigint, newFolderId: bigint | null): Promise<Result>;
@@ -766,6 +767,10 @@ export class Backend implements backendInterface {
     async mattersByStatus(): Promise<MatterStatusCounts> {
         const result = await this.actor.mattersByStatus();
         return result;
+    }
+    async migrateDocumentVersions(): Promise<Result_5> {
+        const result = await this.actor.migrateDocumentVersions();
+        return from_candid_Result_5_n88(result);
     }
     async migrateLibraryVersions(): Promise<Result_5> {
         const result = await this.actor.migrateLibraryVersions();

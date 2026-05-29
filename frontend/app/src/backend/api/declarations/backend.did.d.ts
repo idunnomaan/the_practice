@@ -348,6 +348,7 @@ export interface ThePractice {
   'listUsers' : ActorMethod<[], Array<[Principal, UserRecord]>>,
   'listVersions' : ActorMethod<[bigint], Array<DocumentVersion>>,
   'mattersByStatus' : ActorMethod<[], MatterStatusCounts>,
+  'migrateDocumentVersions' : ActorMethod<[], Result_5>,
   'migrateLibraryVersions' : ActorMethod<[], Result_5>,
   'moveFolder' : ActorMethod<[bigint, [] | [bigint]], Result>,
   'moveLibraryItem' : ActorMethod<[bigint, [] | [bigint]], Result>,

@@ -462,6 +462,7 @@ export const idlFactory = ({ IDL }) => {
       ),
     'listVersions' : IDL.Func([IDL.Nat], [IDL.Vec(DocumentVersion)], ['query']),
     'mattersByStatus' : IDL.Func([], [MatterStatusCounts], ['query']),
+    'migrateDocumentVersions' : IDL.Func([], [Result_5], []),
     'migrateLibraryVersions' : IDL.Func([], [Result_5], []),
     'moveFolder' : IDL.Func([IDL.Nat, IDL.Opt(IDL.Nat)], [Result], []),
     'moveLibraryItem' : IDL.Func([IDL.Nat, IDL.Opt(IDL.Nat)], [Result], []),
