@@ -4,6 +4,7 @@ import { useMatters } from "../hooks/useMatters";
 import { MatterStatus } from "../backend/api/backend";
 import LoadingSpinner from "../components/LoadingSpinner";
 import ErrorMessage from "../components/ErrorMessage";
+import { MATTER_TYPES } from "../constants/matterTypes";
 
 function fmtClientId(id: bigint): string {
   return "CLT-" + String(id).padStart(4, "0");
@@ -94,7 +95,10 @@ export default function MattersPage() {
             <input className="tp-input" value={title} onChange={e => setTitle(e.target.value)} required />
           </label>
           <label className="tp-label">Matter Type
-            <input className="tp-input" value={matterType} onChange={e => setMatterType(e.target.value)} placeholder="e.g. Commercial Litigation" />
+            <select className="tp-input" value={matterType} onChange={e => setMatterType(e.target.value)}>
+              <option value="">— Select type —</option>
+              {MATTER_TYPES.map(t => <option key={t} value={t}>{t}</option>)}
+            </select>
           </label>
           <label className="tp-label">Client ID *
             <input className="tp-input" value={clientId} onChange={e => setClientId(e.target.value)} type="number" required />
