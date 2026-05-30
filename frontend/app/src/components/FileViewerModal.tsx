@@ -16,6 +16,7 @@ export default function FileViewerModal() {
   const [loading, setLoading] = useState(false);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [assembled, setAssembled] = useState<{ url: string; blob: Blob; filename: string; contentType: string } | null>(null);
+  const [progress, setProgress] = useState<{ loaded: number; total: number } | null>(null);
   // D6: pre-fetch confirmation for large videos
   const [awaitingVideoConfirm, setAwaitingVideoConfirm] = useState(false);
   const [downloadingFooter, setDownloadingFooter] = useState(false);
@@ -32,6 +33,7 @@ export default function FileViewerModal() {
     if (!actor || !source) return;
     setLoading(true);
     setLoadError(null);
+    setProgress(null);
     try {
       const result = await fetchAndAssembleBlob({
         prepare: async () => {
@@ -52,6 +54,7 @@ export default function FileViewerModal() {
             return actor.getLibraryChunk(source.versionId, i);
           }
         },
+        onProgress: (loaded, total) => setProgress({ loaded, total }),
       });
       setAssembled(result);
     } catch (e) {
@@ -67,6 +70,7 @@ export default function FileViewerModal() {
       setAssembled(null);
       setLoadError(null);
       setAwaitingVideoConfirm(false);
+      setProgress(null);
       return;
     }
     if (isLargeVideo) {
@@ -183,7 +187,30 @@ export default function FileViewerModal() {
 
         {/* Body */}
         <div style={{ flex: 1, overflow: "auto", minHeight: 200 }}>
-          {loading && <div style={{ padding: 32, textAlign: "center", color: "var(--tx2)" }}>Loading…</div>}
+          {loading && !progress && (
+            <div style={{ padding: 32, textAlign: "center", color: "var(--tx2)" }}>Loading…</div>
+          )}
+          {loading && progress && (
+            <div style={{ padding: "2rem", textAlign: "center" }}>
+              <div style={{ color: "var(--tx2)", fontSize: 13, marginBottom: "0.5rem" }}>
+                Assembling file… {progress.loaded}/{progress.total} chunks
+              </div>
+              <div style={{
+                height: 4,
+                background: "var(--color-background-secondary)",
+                borderRadius: 2,
+                margin: "0.5rem 0",
+              }}>
+                <div style={{
+                  height: "100%",
+                  width: `${(progress.loaded / progress.total) * 100}%`,
+                  background: "#1976d2",
+                  borderRadius: 2,
+                  transition: "width 0.1s",
+                }} />
+              </div>
+            </div>
+          )}
           {loadError && <div style={{ padding: 16, color: "var(--danger)" }}>Failed to load: {loadError}</div>}
           {Viewer && assembled && (
             <Viewer
