@@ -245,3 +245,52 @@ DFINITY has officially deprecated dfx in favor of `icp-cli`. Confirmed via:
 2. `ClientsPage.tsx` — `fmtClientId()` helper; ID column shows CLT-XXXX
 3. `MattersPage.tsx` — `fmtClientId()` helper; Client ID column shows CLT-XXXX
 4. `ClientDetailPage.tsx` — CLT-XXXX shown under client name; Identifier field added to edit form; identifier passed to `updateClient` (was hardcoded `null`)
+
+---
+
+## Deploy — 2026-05-30 (UI Redesign v2 sprint + MatterLog backend)
+
+**Date:** 2026-05-30
+**Operator:** Claude Code (onchain-ops identity), approved by Abdul
+**Branch/commits pushed:** `main`, 9 commits (`4004ad6`→`0b9f259`), origin was at `4004ad6`
+
+### Commits included in this deploy
+
+| Hash | Message |
+|---|---|
+| `56999b4` | Add MatterLog backend (timeline per matter) |
+| `eeceb6a` | feat: add matterType dropdown to Matter forms |
+| `788f8e9` | feat: redesign Clients page — card grid layout |
+| `352776a` | feat: redesign Matters page — status-coloured card grid with matterType |
+| `8d32fee` | feat: redesign Matter detail — header + two-column body + sidebar |
+| `4fb70de` | feat: wire up Matter case log timeline against live MatterLog backend |
+| `0b9f259` | feat: redesign Firm Library — full-width grid, drag-drop, integrity badge |
+
+(Plus 2 pre-sprint commits also on main but not part of this sprint: `b498719`, `1d37d8f`)
+
+### Commands run
+
+```bash
+git push origin main
+
+icp identity default onchain-ops
+icp deploy -e ic --mode upgrade \
+  --args '(principal "r54wt-t77jg-w5y7o-2popg-zndic-tab4v-zklzx-kstlm-3g67j-g5l54-qae")' \
+  backend
+icp deploy -e ic --mode upgrade frontend
+icp identity default anonymous
+```
+
+### Observed output
+
+**Backend:** `Building canisters → All canisters already exist → No canisters have sync steps configured → Deployed canisters: backend (Candid UI): https://a4gq6-oaaaa-aaaab-qaa4q-cai.icp0.io/?id=3toel-miaaa-aaaaj-qr7ja-cai`
+
+**Frontend:** `Building canisters → All canisters already exist → Syncing canisters → Deployed canisters: frontend: https://3gjvg-naaaa-aaaaj-qr7kq-cai.icp0.io/`
+
+### Smoke before deploy
+
+491/491 (all UI commits are frontend-only; matterType field was already in L2 backend).
+
+### Post-deploy action required
+
+Abdul must run `backfillMatterLogSystemEvents()` once via Candid UI to populate `#MatterOpened` entries for all existing matters. Method is idempotent.
