@@ -15,7 +15,7 @@ function avatarColor(id: bigint): string {
   return AVATAR_PALETTE[Number(id % 6n)];
 }
 function initials(name: string): string {
-  return name.split(/\s+/).slice(0, 2).map(w => w[0] ?? "").join("").toUpperCase();
+  return name.split(/\s+/).filter(w => /^[a-zA-Z]/.test(w)).slice(0, 2).map(w => w[0]).join("").toUpperCase();
 }
 function fmtClientId(id: bigint): string {
   return "CLT-" + String(id).padStart(4, "0");
