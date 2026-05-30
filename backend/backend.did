@@ -1,17 +1,4 @@
-type CertificatePayload =
- record {
-   auditEntryCount: nat;
-   canisterId: text;
-   certificateId: text;
-   issuedAt: int;
-   lastAuditTimestamp: int;
-   masterController: text;
-   publicKey: blob;
-   signature: blob;
-   unauthorizedAttempts: nat;
-   validUntil: int;
- };
-type UserRecord =
+type UserRecord = 
  record {
    addedAt: Time;
    addedBy: principal;
@@ -37,14 +24,14 @@ type TopUpRequestRecord =
    requestedTrillionCycles: nat;
    status: TopUpRequestStatus;
  };
-type Result_9 = variant { ok: CertificatePayload; err: text };
 type Time = int;
-type ThePractice =
+type ThePractice = 
  service {
    abandonLibraryUpload: (sessionId: nat) -> (Result);
-   generateComplianceCertificate: () -> (Result_9);
    abandonUpload: (sessionId: nat) -> (Result);
    addLibraryItemTag: (itemId: nat, tag: text) -> (Result);
+   addMatterLog: (matterId: nat, note: text, attachedDocumentIds: vec nat) ->
+    (Result_1);
    addUser: (p: principal, role: Role) -> (Result);
    appendChunk: (sessionId: nat, chunkIndex: nat, chunkBytes: blob) ->
     (Result);
@@ -53,12 +40,13 @@ type ThePractice =
    archiveLibraryItem: (itemId: nat) -> (Result);
    archiveMatter: (id: nat) -> (Result);
    assignPartnerToMatter: (id: nat, partner: opt principal) -> (Result);
+   backfillMatterLogSystemEvents: () -> (Result_12);
    cancelTopUpRequest: (id: nat) -> (Result);
    clientsByStatus: () -> (ClientStatusCounts) query;
    closeMatter: (id: nat) -> (Result);
    createClient: (name: text, clientType: ClientType, primaryEmail: opt text,
     primaryPhone: opt text, identifier: opt text, notes: text) -> (Result_1);
-   createExportManifest: () -> (Result_8);
+   createExportManifest: () -> (Result_11);
    createFolder: (name: text, parentId: opt nat) -> (Result_1);
    createMatter: (title: text, matterType: text, clientId: nat,
     assignedPartner: opt principal, description: text) -> (Result_1);
@@ -68,9 +56,10 @@ type ThePractice =
    deleteFolder: (folderId: nat) -> (Result);
    deleteLibraryItem: (itemId: nat) -> (Result);
    documentsByStatus: () -> (DocumentStatusCounts) query;
-   finalizeLibraryUpload: (sessionId: nat) -> (Result_7);
-   finalizeUpload: (sessionId: nat) -> (Result_6);
+   finalizeLibraryUpload: (sessionId: nat) -> (Result_10);
+   finalizeUpload: (sessionId: nat) -> (Result_9);
    fulfillTopUpRequest: (id: nat) -> (Result);
+   generateComplianceCertificate: () -> (Result_8);
    getChunk: (versionId: nat, chunkIndex: nat) -> (opt blob) query;
    getClient: (id: nat) -> (opt Client) query;
    getClientCount: () -> (nat) query;
@@ -88,6 +77,8 @@ type ThePractice =
    getMasterController: () -> (principal) query;
    getMatter: (id: nat) -> (opt Matter) query;
    getMatterCount: () -> (nat) query;
+   getMatterLogs: (matterId: nat, beforeId: opt nat, limit: opt nat) ->
+    (Result_7) query;
    getMyRole: () -> (opt Role) query;
    getOperationsPrincipal: () -> (opt principal) query;
    getStorageBudget: () -> (nat) query;
@@ -165,33 +156,40 @@ type ThePractice =
     (Result);
    whoAmI: () -> (principal) query;
  };
+type SystemEventKind = 
+ variant {
+   MatterArchived;
+   MatterClosed;
+   MatterOpened;
+   MatterPutOnHold;
+   MatterResumed;
+ };
 type Role = 
  variant {
    Associate;
    Partner;
    Staff;
  };
-type Result_8 = 
- variant {
-   err: text;
-   ok: ExportManifest;
- };
-type Result_7 = 
- variant {
-   err: text;
-   ok: record {
-         itemId: nat;
-         sha256: blob;
-         versionId: nat;
-       };
- };
-type Result_6 = 
+type Result_9 = 
  variant {
    err: text;
    ok: record {
          documentId: nat;
          sha256: blob;
          versionId: nat;
+       };
+ };
+type Result_8 = 
+ variant {
+   err: text;
+   ok: CertificatePayload;
+ };
+type Result_7 = 
+ variant {
+   err: text;
+   ok: record {
+         entries: vec MatterLogEntry;
+         hasMore: bool;
        };
  };
 type Result_5 = 
@@ -234,6 +232,28 @@ type Result_2 =
    err: text;
    ok: vec AuditEntry;
  };
+type Result_12 = 
+ variant {
+   err: text;
+   ok: record {
+         entriesAdded: nat;
+         mattersProcessed: nat;
+       };
+ };
+type Result_11 = 
+ variant {
+   err: text;
+   ok: ExportManifest;
+ };
+type Result_10 = 
+ variant {
+   err: text;
+   ok: record {
+         itemId: nat;
+         sha256: blob;
+         versionId: nat;
+       };
+ };
 type Result_1 = 
  variant {
    err: text;
@@ -257,6 +277,21 @@ type MatterStatus =
    Closed;
    OnHold;
    Open;
+ };
+type MatterLogEntryKind = 
+ variant {
+   SessionNote;
+   SystemEvent: SystemEventKind;
+ };
+type MatterLogEntry = 
+ record {
+   attachedDocumentIds: vec nat;
+   author: principal;
+   createdAt: Time;
+   id: nat;
+   kind: MatterLogEntryKind;
+   matterId: nat;
+   note: text;
  };
 type MatterFilter = 
  record {
@@ -476,6 +511,19 @@ type Client =
    primaryEmail: opt text;
    primaryPhone: opt text;
    status: ClientStatus;
+ };
+type CertificatePayload = 
+ record {
+   auditEntryCount: nat;
+   canisterId: text;
+   certificateId: text;
+   issuedAt: int;
+   lastAuditTimestamp: int;
+   masterController: text;
+   publicKey: blob;
+   signature: blob;
+   unauthorizedAttempts: nat;
+   validUntil: int;
  };
 type AuditOutcome = 
  variant {

@@ -10,10 +10,18 @@ import { IDL } from '@icp-sdk/core/candid';
 
 export const idlFactory = ({ IDL }) => {
   const Result = IDL.Variant({ 'ok' : IDL.Null, 'err' : IDL.Text });
+  const Result_1 = IDL.Variant({ 'ok' : IDL.Nat, 'err' : IDL.Text });
   const Role = IDL.Variant({
     'Staff' : IDL.Null,
     'Associate' : IDL.Null,
     'Partner' : IDL.Null,
+  });
+  const Result_12 = IDL.Variant({
+    'ok' : IDL.Record({
+      'mattersProcessed' : IDL.Nat,
+      'entriesAdded' : IDL.Nat,
+    }),
+    'err' : IDL.Text,
   });
   const ClientStatusCounts = IDL.Record({
     'active' : IDL.Nat,
@@ -24,7 +32,6 @@ export const idlFactory = ({ IDL }) => {
     'Individual' : IDL.Null,
     'Other' : IDL.Null,
   });
-  const Result_1 = IDL.Variant({ 'ok' : IDL.Nat, 'err' : IDL.Text });
   const Time = IDL.Int;
   const Folder = IDL.Record({
     'id' : IDL.Nat,
@@ -59,12 +66,12 @@ export const idlFactory = ({ IDL }) => {
     'operationsPrincipal' : IDL.Opt(IDL.Principal),
     'totalDocuments' : IDL.Nat,
   });
-  const Result_8 = IDL.Variant({ 'ok' : ExportManifest, 'err' : IDL.Text });
+  const Result_11 = IDL.Variant({ 'ok' : ExportManifest, 'err' : IDL.Text });
   const DocumentStatusCounts = IDL.Record({
     'deleted' : IDL.Nat,
     'active' : IDL.Nat,
   });
-  const Result_7 = IDL.Variant({
+  const Result_10 = IDL.Variant({
     'ok' : IDL.Record({
       'itemId' : IDL.Nat,
       'versionId' : IDL.Nat,
@@ -72,7 +79,7 @@ export const idlFactory = ({ IDL }) => {
     }),
     'err' : IDL.Text,
   });
-  const Result_6 = IDL.Variant({
+  const Result_9 = IDL.Variant({
     'ok' : IDL.Record({
       'versionId' : IDL.Nat,
       'sha256' : IDL.Vec(IDL.Nat8),
@@ -92,7 +99,7 @@ export const idlFactory = ({ IDL }) => {
     'canisterId' : IDL.Text,
     'validUntil' : IDL.Int,
   });
-  const Result_9 = IDL.Variant({ 'ok' : CertificatePayload, 'err' : IDL.Text });
+  const Result_8 = IDL.Variant({ 'ok' : CertificatePayload, 'err' : IDL.Text });
   const ClientStatus = IDL.Variant({
     'Inactive' : IDL.Null,
     'Active' : IDL.Null,
@@ -185,6 +192,33 @@ export const idlFactory = ({ IDL }) => {
     'matterType' : IDL.Text,
     'assignedPartner' : IDL.Opt(IDL.Principal),
     'openedAt' : Time,
+  });
+  const SystemEventKind = IDL.Variant({
+    'MatterResumed' : IDL.Null,
+    'MatterPutOnHold' : IDL.Null,
+    'MatterClosed' : IDL.Null,
+    'MatterOpened' : IDL.Null,
+    'MatterArchived' : IDL.Null,
+  });
+  const MatterLogEntryKind = IDL.Variant({
+    'SessionNote' : IDL.Null,
+    'SystemEvent' : SystemEventKind,
+  });
+  const MatterLogEntry = IDL.Record({
+    'id' : IDL.Nat,
+    'attachedDocumentIds' : IDL.Vec(IDL.Nat),
+    'kind' : MatterLogEntryKind,
+    'note' : IDL.Text,
+    'createdAt' : Time,
+    'author' : IDL.Principal,
+    'matterId' : IDL.Nat,
+  });
+  const Result_7 = IDL.Variant({
+    'ok' : IDL.Record({
+      'hasMore' : IDL.Bool,
+      'entries' : IDL.Vec(MatterLogEntry),
+    }),
+    'err' : IDL.Text,
   });
   const TopUpRequestStatus = IDL.Variant({
     'Cancelled' : IDL.Null,
@@ -320,6 +354,11 @@ export const idlFactory = ({ IDL }) => {
     'abandonLibraryUpload' : IDL.Func([IDL.Nat], [Result], []),
     'abandonUpload' : IDL.Func([IDL.Nat], [Result], []),
     'addLibraryItemTag' : IDL.Func([IDL.Nat, IDL.Text], [Result], []),
+    'addMatterLog' : IDL.Func(
+        [IDL.Nat, IDL.Text, IDL.Vec(IDL.Nat)],
+        [Result_1],
+        [],
+      ),
     'addUser' : IDL.Func([IDL.Principal, Role], [Result], []),
     'appendChunk' : IDL.Func(
         [IDL.Nat, IDL.Nat, IDL.Vec(IDL.Nat8)],
@@ -338,6 +377,7 @@ export const idlFactory = ({ IDL }) => {
         [Result],
         [],
       ),
+    'backfillMatterLogSystemEvents' : IDL.Func([], [Result_12], []),
     'cancelTopUpRequest' : IDL.Func([IDL.Nat], [Result], []),
     'clientsByStatus' : IDL.Func([], [ClientStatusCounts], ['query']),
     'closeMatter' : IDL.Func([IDL.Nat], [Result], []),
@@ -353,7 +393,7 @@ export const idlFactory = ({ IDL }) => {
         [Result_1],
         [],
       ),
-    'createExportManifest' : IDL.Func([], [Result_8], []),
+    'createExportManifest' : IDL.Func([], [Result_11], []),
     'createFolder' : IDL.Func([IDL.Text, IDL.Opt(IDL.Nat)], [Result_1], []),
     'createMatter' : IDL.Func(
         [IDL.Text, IDL.Text, IDL.Nat, IDL.Opt(IDL.Principal), IDL.Text],
@@ -366,10 +406,10 @@ export const idlFactory = ({ IDL }) => {
     'deleteFolder' : IDL.Func([IDL.Nat], [Result], []),
     'deleteLibraryItem' : IDL.Func([IDL.Nat], [Result], []),
     'documentsByStatus' : IDL.Func([], [DocumentStatusCounts], ['query']),
-    'finalizeLibraryUpload' : IDL.Func([IDL.Nat], [Result_7], []),
-    'finalizeUpload' : IDL.Func([IDL.Nat], [Result_6], []),
+    'finalizeLibraryUpload' : IDL.Func([IDL.Nat], [Result_10], []),
+    'finalizeUpload' : IDL.Func([IDL.Nat], [Result_9], []),
     'fulfillTopUpRequest' : IDL.Func([IDL.Nat], [Result], []),
-    'generateComplianceCertificate' : IDL.Func([], [Result_9], []),
+    'generateComplianceCertificate' : IDL.Func([], [Result_8], []),
     'getChunk' : IDL.Func(
         [IDL.Nat, IDL.Nat],
         [IDL.Opt(IDL.Vec(IDL.Nat8))],
@@ -403,6 +443,11 @@ export const idlFactory = ({ IDL }) => {
     'getMasterController' : IDL.Func([], [IDL.Principal], ['query']),
     'getMatter' : IDL.Func([IDL.Nat], [IDL.Opt(Matter)], ['query']),
     'getMatterCount' : IDL.Func([], [IDL.Nat], ['query']),
+    'getMatterLogs' : IDL.Func(
+        [IDL.Nat, IDL.Opt(IDL.Nat), IDL.Opt(IDL.Nat)],
+        [Result_7],
+        ['query'],
+      ),
     'getMyRole' : IDL.Func([], [IDL.Opt(Role)], ['query']),
     'getOperationsPrincipal' : IDL.Func(
         [],

@@ -23,6 +23,7 @@ import Library "./Library";
 import Cycles "mo:core/Cycles";
 import TopUpRequest "./TopUpRequest";
 import FileAccess "./FileAccess";
+import MatterLog "./MatterLog";
 
 shared(installer) persistent actor class ThePractice(
   masterControllerArg : Principal
@@ -67,6 +68,9 @@ shared(installer) persistent actor class ThePractice(
   type TopUpRequestStatus = TopUpRequest.TopUpRequestStatus;
   type TopUpRequestRecord = TopUpRequest.TopUpRequest;
   type FileAccessKind = FileAccess.FileAccessKind;
+  type SystemEventKind = MatterLog.SystemEventKind;
+  type MatterLogEntryKind = MatterLog.MatterLogEntryKind;
+  type MatterLogEntry = MatterLog.MatterLogEntry;
 
   // INV-1: anonymous principal cannot hold any identity — trap at install if anonymous
   assert not Principal.isAnonymous(masterControllerArg);
@@ -142,8 +146,18 @@ shared(installer) persistent actor class ThePractice(
   let MIN_TOPUP_T_CYCLES : Nat = 1;
   let MAX_TOPUP_T_CYCLES : Nat = 100;
   let MAX_TOPUP_NOTE_LENGTH : Nat = 1024;
+  let MAX_LOG_NOTE_LENGTH : Nat = 4_096;
+  let MAX_LOG_ATTACHMENTS : Nat = 50;
+  let DEFAULT_LOG_PAGE_LIMIT : Nat = 50;
+  let MAX_LOG_PAGE_LIMIT : Nat = 200;
   let topUpRequests = MutMap.empty<Nat, TopUpRequestRecord>();
   var nextTopUpRequestId : Nat = 1;
+
+  // MatterLog state — separate primary map + per-matter secondary index (Option A, spec §2).
+  // `let` bindings per L5 lock (MutMap mutates in-place; binding never reassigned); `var` for counter.
+  let matterLogEntries = MutMap.empty<Nat, MatterLogEntry>();
+  let matterLogEntriesByMatter = MutMap.empty<Nat, [Nat]>();
+  var nextMatterLogEntryId : Nat = 1;
 
   // ── Audit helpers ─────────────────────────────────────────────────────────
   // SEC-INV-1: auditOk and auditErr are the only write paths into auditLog (append-only).
@@ -287,6 +301,47 @@ shared(installer) persistent actor class ThePractice(
       case null {};
     };
     #err("only operations principal can fulfill")
+  };
+
+  // ── MatterLog private helpers ─────────────────────────────────────────────
+
+  func appendToMatterLogIndex(matterId : Nat, entryId : Nat) {
+    let existing : [Nat] = switch (MutMap.get(matterLogEntriesByMatter, Nat.compare, matterId)) {
+      case null [];
+      case (?arr) arr;
+    };
+    MutMap.add(matterLogEntriesByMatter, Nat.compare, matterId, Array.concat<Nat>(existing, [entryId]));
+  };
+
+  func systemEventNote(kind : SystemEventKind) : Text {
+    switch kind {
+      case (#MatterOpened)    "Matter opened";
+      case (#MatterPutOnHold) "Matter put on hold";
+      case (#MatterResumed)   "Matter resumed";
+      case (#MatterClosed)    "Matter closed";
+      case (#MatterArchived)  "Matter archived";
+    };
+  };
+
+  func appendMatterLogSystemEvent(
+    matterId : Nat,
+    kind : SystemEventKind,
+    caller : Principal,
+    at : Time.Time
+  ) {
+    let entryId = nextMatterLogEntryId;
+    nextMatterLogEntryId += 1;
+    let entry : MatterLogEntry = {
+      id = entryId;
+      matterId;
+      author = caller;
+      createdAt = at;
+      note = systemEventNote(kind);
+      attachedDocumentIds = [];
+      kind = #SystemEvent(kind);
+    };
+    MutMap.add(matterLogEntries, Nat.compare, entryId, entry);
+    appendToMatterLogIndex(matterId, entryId);
   };
 
   // ── Init ─────────────────────────────────────────────────────────────────
@@ -870,6 +925,7 @@ shared(installer) persistent actor class ThePractice(
       lastModifiedAt = now;
       lastModifiedBy = caller;
     });
+    appendMatterLogSystemEvent(id, #MatterOpened, caller, now);
     auditOk(caller, "createMatter", null);
     #ok(id)
   };
@@ -989,6 +1045,7 @@ shared(installer) persistent actor class ThePractice(
           lastModifiedAt = Time.now();
           lastModifiedBy = caller;
         });
+        appendMatterLogSystemEvent(id, #MatterClosed, caller, Time.now());
       };
     };
     auditOk(caller, "closeMatter", null);
@@ -1058,6 +1115,7 @@ shared(installer) persistent actor class ThePractice(
           lastModifiedAt = Time.now();
           lastModifiedBy = caller;
         });
+        appendMatterLogSystemEvent(id, #MatterPutOnHold, caller, Time.now());
       };
     };
     auditOk(caller, "putMatterOnHold", null);
@@ -1092,6 +1150,7 @@ shared(installer) persistent actor class ThePractice(
           lastModifiedAt = Time.now();
           lastModifiedBy = caller;
         });
+        appendMatterLogSystemEvent(id, #MatterResumed, caller, Time.now());
       };
     };
     auditOk(caller, "resumeMatter", null);
@@ -1126,6 +1185,7 @@ shared(installer) persistent actor class ThePractice(
           lastModifiedAt = Time.now();
           lastModifiedBy = caller;
         });
+        appendMatterLogSystemEvent(id, #MatterArchived, caller, Time.now());
       };
     };
     auditOk(caller, "archiveMatter", null);
@@ -2944,6 +3004,188 @@ shared(installer) persistent actor class ThePractice(
       signature;
       publicKey = public_key;
     })
+  };
+
+  // ── MatterLog public methods ──────────────────────────────────────────────
+
+  public shared ({ caller }) func addMatterLog(
+    matterId : Nat,
+    note : Text,
+    attachedDocumentIds : [Nat]
+  ) : async Result.Result<Nat, Text> {
+    switch (Auth.requireAuthenticated(caller)) {
+      case (#err(e)) { auditErr(caller, "matterLog.add", null, e); return #err(e) };
+      case (#ok) {};
+    };
+    switch (requireRole(caller, #Associate)) {
+      case (#err(_)) {
+        let e = "only associates and partners can add log entries";
+        auditErr(caller, "matterLog.add", null, e);
+        return #err(e);
+      };
+      case (#ok) {};
+    };
+    let matter : Matter = switch (MutMap.get(matters, Nat.compare, matterId)) {
+      case null {
+        let e = "matter not found";
+        auditErr(caller, "matterLog.add", null, e);
+        return #err(e);
+      };
+      case (?m) m;
+    };
+    if (matter.status == #Archived) {
+      let e = "cannot add log entries to archived matters";
+      auditErr(caller, "matterLog.add", null, e);
+      return #err(e);
+    };
+    let trimmedNote = Text.trim(note, #predicate(func(c : Char) : Bool {
+      c == ' ' or c == '\t' or c == '\n' or c == '\r'
+    }));
+    if (Text.size(trimmedNote) == 0) {
+      let e = "note cannot be empty";
+      auditErr(caller, "matterLog.add", null, e);
+      return #err(e);
+    };
+    if (Text.size(note) > MAX_LOG_NOTE_LENGTH) {
+      let e = "note exceeds " # Nat.toText(MAX_LOG_NOTE_LENGTH) # " character limit";
+      auditErr(caller, "matterLog.add", null, e);
+      return #err(e);
+    };
+    if (attachedDocumentIds.size() > MAX_LOG_ATTACHMENTS) {
+      let e = "too many attachments";
+      auditErr(caller, "matterLog.add", null, e);
+      return #err(e);
+    };
+    // Duplicate check — O(n^2) acceptable for MAX_LOG_ATTACHMENTS = 50
+    var i = 0;
+    while (i < attachedDocumentIds.size()) {
+      var j = i + 1;
+      while (j < attachedDocumentIds.size()) {
+        if (attachedDocumentIds[i] == attachedDocumentIds[j]) {
+          let e = "duplicate document attachment";
+          auditErr(caller, "matterLog.add", null, e);
+          return #err(e);
+        };
+        j += 1;
+      };
+      i += 1;
+    };
+    for (docId in attachedDocumentIds.vals()) {
+      switch (MutMap.get(documents, Nat.compare, docId)) {
+        case null {
+          let e = "document " # Nat.toText(docId) # " not found";
+          auditErr(caller, "matterLog.add", null, e);
+          return #err(e);
+        };
+        case (?doc) {
+          if (doc.matterId != matterId) {
+            let e = "document " # Nat.toText(docId) # " does not belong to this matter";
+            auditErr(caller, "matterLog.add", null, e);
+            return #err(e);
+          };
+        };
+      };
+    };
+    let entryId = nextMatterLogEntryId;
+    nextMatterLogEntryId += 1;
+    let entry : MatterLogEntry = {
+      id = entryId;
+      matterId;
+      author = caller;
+      createdAt = Time.now();
+      note;
+      attachedDocumentIds;
+      kind = #SessionNote;
+    };
+    MutMap.add(matterLogEntries, Nat.compare, entryId, entry);
+    appendToMatterLogIndex(matterId, entryId);
+    auditOk(caller, "matterLog.add", null);
+    #ok(entryId)
+  };
+
+  public shared query ({ caller }) func getMatterLogs(
+    matterId : Nat,
+    beforeId : ?Nat,
+    limit : ?Nat
+  ) : async Result.Result<{ entries : [MatterLogEntry]; hasMore : Bool }, Text> {
+    switch (Auth.requireAuthenticated(caller)) { case (#err(_)) assert false; case (#ok) {} };
+    switch (MutMap.get(matters, Nat.compare, matterId)) {
+      case null { return #err("matter not found") };
+      case (?_) {};
+    };
+    let ids : [Nat] = switch (MutMap.get(matterLogEntriesByMatter, Nat.compare, matterId)) {
+      case null [];
+      case (?arr) arr;
+    };
+    let n = ids.size();
+    // Reverse index to newest-first (index is ascending by id = chronological order)
+    let reversed = Array.tabulate<Nat>(n, func(i) { ids[n - 1 - i] });
+    // Apply cursor: drop entries with id >= beforeId
+    let afterCursor : [Nat] = switch beforeId {
+      case null reversed;
+      case (?cid) Array.filterMap<Nat, Nat>(reversed, func(x) { if (x < cid) ?x else null });
+    };
+    let requestedLimit = switch limit { case null DEFAULT_LOG_PAGE_LIMIT; case (?v) v };
+    let pageLimit : Nat = if (requestedLimit > MAX_LOG_PAGE_LIMIT) MAX_LOG_PAGE_LIMIT else requestedLimit;
+    let total = afterCursor.size();
+    let hasMore = total > pageLimit;
+    let taken = if (total <= pageLimit) afterCursor
+                else Array.tabulate<Nat>(pageLimit, func(i) { afterCursor[i] });
+    let entries = Array.filterMap<Nat, MatterLogEntry>(taken, func(eid) {
+      MutMap.get(matterLogEntries, Nat.compare, eid)
+    });
+    #ok({ entries; hasMore })
+  };
+
+  public shared ({ caller }) func backfillMatterLogSystemEvents() : async Result.Result<{ mattersProcessed : Nat; entriesAdded : Nat }, Text> {
+    switch (Auth.requireAuthenticated(caller)) {
+      case (#err(e)) { auditErr(caller, "matterLog.backfill", null, e); return #err(e) };
+      case (#ok) {};
+    };
+    if (caller != masterController) {
+      let e = "only master controller can run backfill";
+      auditErr(caller, "matterLog.backfill", null, e);
+      return #err(e);
+    };
+    var mattersProcessed : Nat = 0;
+    var entriesAdded : Nat = 0;
+    for ((mId, m) in MutMap.entriesFrom(matters, Nat.compare, 0)) {
+      mattersProcessed += 1;
+      let matterEntryIds : [Nat] = switch (MutMap.get(matterLogEntriesByMatter, Nat.compare, mId)) {
+        case null [];
+        case (?ids) ids;
+      };
+      var alreadyHasOpened = false;
+      label checkOpened for (eid in matterEntryIds.vals()) {
+        switch (MutMap.get(matterLogEntries, Nat.compare, eid)) {
+          case (?e) {
+            switch (e.kind) {
+              case (#SystemEvent(#MatterOpened)) { alreadyHasOpened := true; break checkOpened };
+              case _ {};
+            };
+          };
+          case null {};
+        };
+      };
+      if (not alreadyHasOpened) {
+        let entryId = nextMatterLogEntryId;
+        nextMatterLogEntryId += 1;
+        let entry : MatterLogEntry = {
+          id = entryId;
+          matterId = mId;
+          author = m.createdBy;
+          createdAt = m.createdAt;
+          note = "Matter opened";
+          attachedDocumentIds = [];
+          kind = #SystemEvent(#MatterOpened);
+        };
+        MutMap.add(matterLogEntries, Nat.compare, entryId, entry);
+        appendToMatterLogIndex(mId, entryId);
+        entriesAdded += 1;
+      };
+    };
+    auditOk(caller, "matterLog.backfill", null);
+    #ok({ mattersProcessed; entriesAdded })
   };
 
   // ── L5 Audit read ─────────────────────────────────────────────────────────

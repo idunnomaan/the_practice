@@ -1805,6 +1805,202 @@ R=$(icp canister call backend prepareLibraryDownload "($LIB_V1 : nat, variant { 
 check "anonymous denied #View on library item" "err" "$R"
 echo ""
 
+# ── Steps 148–172: MatterLog Backend ─────────────────────────────────────────
+# Tests: addMatterLog (role gates + all validations), getMatterLogs (pagination),
+# system event hooks (createMatter + 4 transitions), backfill, upgrade survival.
+
+echo "Step 148: MatterLog setup — create client + matter; verify #MatterOpened auto-added"
+ML_CLIENT=$(icp canister call backend createClient "(\"ML Test Corp\", variant { Company }, null, null, null, \"\")")
+check "createClient for log test returns ok" "ok" "$ML_CLIENT"
+ML_CLIENT_ID=$(echo "$ML_CLIENT" | python3 -c "import sys,re; m=re.search(r'(\d+)\s*:\s*nat',sys.stdin.read()); print(m.group(1) if m else '0')")
+ML_MATTER=$(icp canister call backend createMatter "(\"MatterLog Test\", \"Litigation\", $ML_CLIENT_ID : nat, null, \"\")")
+check "createMatter for log test returns ok" "ok" "$ML_MATTER"
+ML_MATTER_ID=$(echo "$ML_MATTER" | python3 -c "import sys,re; m=re.search(r'(\d+)\s*:\s*nat',sys.stdin.read()); print(m.group(1) if m else '0')")
+echo "  ml_client_id=$ML_CLIENT_ID  ml_matter_id=$ML_MATTER_ID"
+ML_LOGS_148=$(icp canister call backend getMatterLogs "($ML_MATTER_ID : nat, null, null)")
+check "getMatterLogs returns ok after createMatter" "ok" "$ML_LOGS_148"
+check "auto-created MatterOpened entry present" "MatterOpened" "$ML_LOGS_148"
+echo ""
+
+echo "Step 149: Matter creation #MatterOpened entry — kind, note, no attachments"
+check "entry kind is SystemEvent" "SystemEvent" "$ML_LOGS_148"
+check "entry note is 'Matter opened'" "Matter opened" "$ML_LOGS_148"
+check "hasMore false for single entry" "false" "$ML_LOGS_148"
+echo ""
+
+echo "Step 150: Partner can addMatterLog — returns ok; audit matterLog.add #Ok emitted"
+R=$(icp canister call backend addMatterLog "($ML_MATTER_ID : nat, \"Partner session note\", vec {})")
+check "Partner addMatterLog returns ok" "ok" "$R"
+ML_ENTRY1_ID=$(echo "$R" | python3 -c "import sys,re; m=re.search(r'(\d+)\s*:\s*nat',sys.stdin.read()); print(m.group(1) if m else '0')")
+AUDIT150=$(icp canister call backend readAuditEntries "(0 : nat, 5000 : nat)")
+check "matterLog.add audit entry emitted (ok outcome)" "matterLog.add" "$AUDIT150"
+echo ""
+
+echo "Step 151: Associate can addMatterLog — Associate is lower bound of Associate+"
+# smoke-doc-associate registered as Associate in step 54; smoke-associate was suspended in step 10
+R=$(icp canister call backend addMatterLog "($ML_MATTER_ID : nat, \"Associate session note\", vec {})" --identity smoke-doc-associate)
+check "Associate addMatterLog returns ok" "ok" "$R"
+ML_ENTRY2_ID=$(echo "$R" | python3 -c "import sys,re; m=re.search(r'(\d+)\s*:\s*nat',sys.stdin.read()); print(m.group(1) if m else '0')")
+echo ""
+
+echo "Step 152: Staff cannot addMatterLog — read-only role; audit #Err emitted"
+R=$(icp canister call backend addMatterLog "($ML_MATTER_ID : nat, \"Staff note\", vec {})" --identity smoke-staff)
+check "Staff addMatterLog returns err" "err" "$R"
+check "error message names the restriction" "only associates and partners" "$R"
+AUDIT152=$(icp canister call backend readAuditEntries "(0 : nat, 5000 : nat)")
+check "Staff rejection emits matterLog.add audit Err" "matterLog.add" "$AUDIT152"
+echo ""
+
+echo "Step 153: Anonymous cannot addMatterLog"
+R=$(icp canister call backend addMatterLog "($ML_MATTER_ID : nat, \"Anon note\", vec {})" --identity anonymous 2>&1) || true
+check "anonymous addMatterLog rejected" "err" "$R"
+echo ""
+
+echo "Step 154: Empty note rejected"
+R=$(icp canister call backend addMatterLog "($ML_MATTER_ID : nat, \"\", vec {})")
+check "empty note returns err" "note cannot be empty" "$R"
+echo ""
+
+echo "Step 155: Note exceeding 4096 chars rejected"
+BIG_NOTE=$(python3 -c "print('x' * 4097)")
+R=$(icp canister call backend addMatterLog "($ML_MATTER_ID : nat, \"$BIG_NOTE\", vec {})")
+check "oversized note returns err" "err" "$R"
+echo ""
+
+echo "Step 156: More than 50 attachments rejected"
+MANY_IDS=$(python3 -c "print('; '.join([str(i) + ' : nat' for i in range(1, 52)]))")
+R=$(icp canister call backend addMatterLog "($ML_MATTER_ID : nat, \"note\", vec { $MANY_IDS })")
+check "51 attachments returns err" "too many attachments" "$R"
+echo ""
+
+echo "Step 157: Duplicate document id in attachments rejected"
+R=$(icp canister call backend addMatterLog "($ML_MATTER_ID : nat, \"note\", vec { 99998 : nat; 99998 : nat })")
+check "duplicate doc id returns err" "duplicate document attachment" "$R"
+echo ""
+
+echo "Step 158: Document belonging to a different matter rejected"
+# DOC1_ID was uploaded to matter 2 in step 55; ML_MATTER_ID is a different matter
+R=$(icp canister call backend addMatterLog "($ML_MATTER_ID : nat, \"note\", vec { $DOC1_ID : nat })")
+check "cross-matter document rejected" "does not belong to this matter" "$R"
+echo ""
+
+echo "Step 159: Nonexistent document id rejected"
+R=$(icp canister call backend addMatterLog "($ML_MATTER_ID : nat, \"note\", vec { 99999 : nat })")
+check "nonexistent document rejected" "not found" "$R"
+echo ""
+
+echo "Step 160: Archived matter rejects new entries (matter 1 archived in step 45)"
+R=$(icp canister call backend addMatterLog "(1 : nat, \"note\", vec {})")
+check "archived matter rejects log entry" "cannot add log entries to archived matters" "$R"
+echo ""
+
+echo "Step 161: getMatterLogs — newest first; ids strictly descending"
+ML_ALL_161=$(icp canister call backend getMatterLogs "($ML_MATTER_ID : nat, null, null)")
+check "getMatterLogs returns ok" "ok" "$ML_ALL_161"
+# Entries: MatterOpened + Partner note + Associate note = 3 entries
+ML_ORDER=$(echo "$ML_ALL_161" | python3 -c "
+import sys, re
+ids = [int(m) for m in re.findall(r'\bid\s*=\s*(\d+)\s*:', sys.stdin.read())]
+if len(ids) >= 2 and all(ids[i] > ids[i+1] for i in range(len(ids)-1)):
+    print('descending')
+else:
+    print('not_descending: ' + str(ids))
+")
+check "entry ids are descending (newest first)" "descending" "$ML_ORDER"
+echo ""
+
+echo "Step 162: getMatterLogs pagination — limit=1 returns hasMore=true"
+ML_P1=$(icp canister call backend getMatterLogs "($ML_MATTER_ID : nat, null, opt (1 : nat))")
+check "limit=1 returns ok" "ok" "$ML_P1"
+check "hasMore=true with limit < total entries" "true" "$ML_P1"
+ML_P1_ID=$(echo "$ML_P1" | python3 -c "import sys,re; m=re.search(r'\bid\s*=\s*(\d+)\s*:',sys.stdin.read()); print(m.group(1) if m else '0')")
+echo "  page1 cursor id=$ML_P1_ID"
+echo ""
+
+echo "Step 163: getMatterLogs second page via cursor — hasMore=false on final page"
+R=$(icp canister call backend getMatterLogs "($ML_MATTER_ID : nat, opt ($ML_P1_ID : nat), opt (100 : nat))")
+check "second page returns ok" "ok" "$R"
+check "hasMore=false on final page" "false" "$R"
+echo ""
+
+echo "Step 164: getMatterLogs on nonexistent matter returns err"
+R=$(icp canister call backend getMatterLogs "(99999 : nat, null, null)")
+check "nonexistent matter returns err" "err" "$R"
+check "error says matter not found" "matter not found" "$R"
+echo ""
+
+echo "Step 165: getMatterLogs rejects anonymous callers (query traps on anonymous)"
+R=$(icp canister call backend getMatterLogs "($ML_MATTER_ID : nat, null, null)" --identity anonymous 2>&1) || true
+check_absent "anonymous getMatterLogs returns no ok result" "variant { ok" "$R"
+echo ""
+
+echo "Step 166: getMatterLogs accessible by Staff (read-only role can view)"
+R=$(icp canister call backend getMatterLogs "($ML_MATTER_ID : nat, null, null)" --identity smoke-staff)
+check "Staff can getMatterLogs" "ok" "$R"
+echo ""
+
+echo "Step 167: System events — createMatter + 4 transitions each append correct #SystemEvent"
+ML_CHAIN_MATTER=$(icp canister call backend createMatter "(\"Chain Matter\", \"Corporate\", $ML_CLIENT_ID : nat, null, \"\")")
+check "createMatter for transition chain ok" "ok" "$ML_CHAIN_MATTER"
+ML_CHAIN_ID=$(echo "$ML_CHAIN_MATTER" | python3 -c "import sys,re; m=re.search(r'(\d+)\s*:\s*nat',sys.stdin.read()); print(m.group(1) if m else '0')")
+icp canister call backend putMatterOnHold "($ML_CHAIN_ID : nat)" > /dev/null
+icp canister call backend resumeMatter "($ML_CHAIN_ID : nat)" > /dev/null
+icp canister call backend closeMatter "($ML_CHAIN_ID : nat)" > /dev/null
+icp canister call backend archiveMatter "($ML_CHAIN_ID : nat)" > /dev/null
+ML_CHAIN_LOGS=$(icp canister call backend getMatterLogs "($ML_CHAIN_ID : nat, null, null)")
+check "chain matter has MatterOpened event" "MatterOpened" "$ML_CHAIN_LOGS"
+check "chain matter has MatterPutOnHold event" "MatterPutOnHold" "$ML_CHAIN_LOGS"
+check "chain matter has MatterResumed event" "MatterResumed" "$ML_CHAIN_LOGS"
+check "chain matter has MatterClosed event" "MatterClosed" "$ML_CHAIN_LOGS"
+check "chain matter has MatterArchived event" "MatterArchived" "$ML_CHAIN_LOGS"
+echo "  chain_id=$ML_CHAIN_ID"
+echo ""
+
+echo "Step 168: MatterOpened entry createdAt is non-zero (set to Time.now() at creation)"
+ML_CREATED_AT=$(echo "$ML_CHAIN_LOGS" | python3 -c "
+import sys, re
+text = sys.stdin.read()
+m = re.search(r'createdAt\s*=\s*([0-9_]+)\s*:', text)
+val = m.group(1).replace('_','') if m else '0'
+print(val)
+")
+check "MatterOpened createdAt is non-zero timestamp" "[1-9]" "$ML_CREATED_AT"
+echo ""
+
+echo "Step 169: backfillMatterLogSystemEvents — non-master caller rejected"
+R=$(icp canister call backend backfillMatterLogSystemEvents "()" --identity smoke-associate)
+check "non-master backfill rejected" "only master controller can run backfill" "$R"
+echo ""
+
+echo "Step 170: backfillMatterLogSystemEvents — master run succeeds; audit emitted"
+R=$(icp canister call backend backfillMatterLogSystemEvents "()")
+check "backfill returns ok" "ok" "$R"
+check "mattersProcessed field present" "mattersProcessed" "$R"
+AUDIT170=$(icp canister call backend readAuditEntries "(0 : nat, 5000 : nat)")
+check "matterLog.backfill audit entry emitted" "matterLog.backfill" "$AUDIT170"
+echo ""
+
+echo "Step 171: backfillMatterLogSystemEvents idempotent — second run adds 0 entries"
+R=$(icp canister call backend backfillMatterLogSystemEvents "()")
+check "second backfill returns ok" "ok" "$R"
+ML_ADDED=$(echo "$R" | python3 -c "import sys,re; m=re.search(r'entriesAdded\s*=\s*(\d+)',sys.stdin.read()); print(m.group(1) if m else 'x')")
+check "second backfill adds 0 entries (idempotent — all matters have MatterOpened)" "0" "$ML_ADDED"
+echo ""
+
+echo "Step 172: MatterLog upgrade survival — entry persists; counter not reset"
+PRE_ENTRY=$(icp canister call backend addMatterLog "($ML_MATTER_ID : nat, \"Pre-upgrade entry\", vec {})")
+check "pre-upgrade addMatterLog ok" "ok" "$PRE_ENTRY"
+PRE_ENTRY_ID=$(echo "$PRE_ENTRY" | python3 -c "import sys,re; m=re.search(r'(\d+)\s*:\s*nat',sys.stdin.read()); print(m.group(1) if m else '0')")
+icp deploy backend --mode upgrade --args "(principal \"$MASTER_PRINCIPAL\")" 2>&1 | tail -2
+POST_LOGS=$(icp canister call backend getMatterLogs "($ML_MATTER_ID : nat, null, null)")
+check "post-upgrade: pre-upgrade log entry still present" "Pre-upgrade entry" "$POST_LOGS"
+POST_ENTRY=$(icp canister call backend addMatterLog "($ML_MATTER_ID : nat, \"Post-upgrade entry\", vec {})")
+check "post-upgrade: addMatterLog still works" "ok" "$POST_ENTRY"
+POST_ENTRY_ID=$(echo "$POST_ENTRY" | python3 -c "import sys,re; m=re.search(r'(\d+)\s*:\s*nat',sys.stdin.read()); print(m.group(1) if m else '0')")
+ML_COUNTER_OK=$(python3 -c "print('counter_ok' if int('$POST_ENTRY_ID') > int('$PRE_ENTRY_ID') else 'counter_reset')")
+check "post-upgrade: nextMatterLogEntryId not reset" "counter_ok" "$ML_COUNTER_OK"
+echo ""
+
 # ── Summary ──────────────────────────────────────────────────────────────────
 echo "=== Results: $PASS passed, $FAIL failed ==="
 if [ "$FAIL" -gt 0 ]; then

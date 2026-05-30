@@ -204,6 +204,17 @@ export interface MatterFilter {
   'matterTypeContains' : [] | [string],
   'assignedPartner' : [] | [Principal],
 }
+export interface MatterLogEntry {
+  'id' : bigint,
+  'attachedDocumentIds' : Array<bigint>,
+  'kind' : MatterLogEntryKind,
+  'note' : string,
+  'createdAt' : Time,
+  'author' : Principal,
+  'matterId' : bigint,
+}
+export type MatterLogEntryKind = { 'SessionNote' : null } |
+  { 'SystemEvent' : SystemEventKind };
 export type MatterStatus = { 'OnHold' : null } |
   { 'Open' : null } |
   { 'Closed' : null } |
@@ -217,6 +228,16 @@ export interface MatterStatusCounts {
 export type Result = { 'ok' : null } |
   { 'err' : string };
 export type Result_1 = { 'ok' : bigint } |
+  { 'err' : string };
+export type Result_10 = {
+    'ok' : { 'itemId' : bigint, 'versionId' : bigint, 'sha256' : Uint8Array }
+  } |
+  { 'err' : string };
+export type Result_11 = { 'ok' : ExportManifest } |
+  { 'err' : string };
+export type Result_12 = {
+    'ok' : { 'mattersProcessed' : bigint, 'entriesAdded' : bigint }
+  } |
   { 'err' : string };
 export type Result_2 = { 'ok' : Array<AuditEntry> } |
   { 'err' : string };
@@ -245,7 +266,13 @@ export type Result_4 = {
   { 'err' : string };
 export type Result_5 = { 'ok' : { 'skipped' : bigint, 'migrated' : bigint } } |
   { 'err' : string };
-export type Result_6 = {
+export type Result_7 = {
+    'ok' : { 'hasMore' : boolean, 'entries' : Array<MatterLogEntry> }
+  } |
+  { 'err' : string };
+export type Result_8 = { 'ok' : CertificatePayload } |
+  { 'err' : string };
+export type Result_9 = {
     'ok' : {
       'versionId' : bigint,
       'sha256' : Uint8Array,
@@ -253,27 +280,26 @@ export type Result_6 = {
     }
   } |
   { 'err' : string };
-export type Result_7 = {
-    'ok' : { 'itemId' : bigint, 'versionId' : bigint, 'sha256' : Uint8Array }
-  } |
-  { 'err' : string };
-export type Result_8 = { 'ok' : ExportManifest } |
-  { 'err' : string };
-export type Result_9 = { 'ok' : CertificatePayload } |
-  { 'err' : string };
 export type Role = { 'Staff' : null } |
   { 'Associate' : null } |
   { 'Partner' : null };
+export type SystemEventKind = { 'MatterResumed' : null } |
+  { 'MatterPutOnHold' : null } |
+  { 'MatterClosed' : null } |
+  { 'MatterOpened' : null } |
+  { 'MatterArchived' : null };
 export interface ThePractice {
   'abandonLibraryUpload' : ActorMethod<[bigint], Result>,
   'abandonUpload' : ActorMethod<[bigint], Result>,
   'addLibraryItemTag' : ActorMethod<[bigint, string], Result>,
+  'addMatterLog' : ActorMethod<[bigint, string, Array<bigint>], Result_1>,
   'addUser' : ActorMethod<[Principal, Role], Result>,
   'appendChunk' : ActorMethod<[bigint, bigint, Uint8Array], Result>,
   'appendLibraryChunk' : ActorMethod<[bigint, bigint, Uint8Array], Result>,
   'archiveLibraryItem' : ActorMethod<[bigint], Result>,
   'archiveMatter' : ActorMethod<[bigint], Result>,
   'assignPartnerToMatter' : ActorMethod<[bigint, [] | [Principal]], Result>,
+  'backfillMatterLogSystemEvents' : ActorMethod<[], Result_12>,
   'cancelTopUpRequest' : ActorMethod<[bigint], Result>,
   'clientsByStatus' : ActorMethod<[], ClientStatusCounts>,
   'closeMatter' : ActorMethod<[bigint], Result>,
@@ -281,7 +307,7 @@ export interface ThePractice {
     [string, ClientType, [] | [string], [] | [string], [] | [string], string],
     Result_1
   >,
-  'createExportManifest' : ActorMethod<[], Result_8>,
+  'createExportManifest' : ActorMethod<[], Result_11>,
   'createFolder' : ActorMethod<[string, [] | [bigint]], Result_1>,
   'createMatter' : ActorMethod<
     [string, string, bigint, [] | [Principal], string],
@@ -293,10 +319,10 @@ export interface ThePractice {
   'deleteFolder' : ActorMethod<[bigint], Result>,
   'deleteLibraryItem' : ActorMethod<[bigint], Result>,
   'documentsByStatus' : ActorMethod<[], DocumentStatusCounts>,
-  'finalizeLibraryUpload' : ActorMethod<[bigint], Result_7>,
-  'finalizeUpload' : ActorMethod<[bigint], Result_6>,
+  'finalizeLibraryUpload' : ActorMethod<[bigint], Result_10>,
+  'finalizeUpload' : ActorMethod<[bigint], Result_9>,
   'fulfillTopUpRequest' : ActorMethod<[bigint], Result>,
-  'generateComplianceCertificate' : ActorMethod<[], Result_9>,
+  'generateComplianceCertificate' : ActorMethod<[], Result_8>,
   'getChunk' : ActorMethod<[bigint, bigint], [] | [Uint8Array]>,
   'getClient' : ActorMethod<[bigint], [] | [Client]>,
   'getClientCount' : ActorMethod<[], bigint>,
@@ -314,6 +340,10 @@ export interface ThePractice {
   'getMasterController' : ActorMethod<[], Principal>,
   'getMatter' : ActorMethod<[bigint], [] | [Matter]>,
   'getMatterCount' : ActorMethod<[], bigint>,
+  'getMatterLogs' : ActorMethod<
+    [bigint, [] | [bigint], [] | [bigint]],
+    Result_7
+  >,
   'getMyRole' : ActorMethod<[], [] | [Role]>,
   'getOperationsPrincipal' : ActorMethod<[], [] | [Principal]>,
   'getStorageBudget' : ActorMethod<[], bigint>,
