@@ -435,7 +435,7 @@ export default function LibraryPage() {
                 style={{
                   display: "inline-flex", alignItems: "center", gap: 6,
                   background: "var(--surf)", border: "1px solid var(--bd)", borderRadius: 6,
-                  padding: "4px 10px", cursor: "pointer", fontSize: 12,
+                  padding: "4px 10px", cursor: "pointer", fontSize: 12, color: "var(--tx)",
                 }}>
                 <i className={`ti ${fileIcon(ver.contentType)}`} style={{ fontSize: 13, color: "var(--tx2)" }} />
                 <span>{ver.filename}</span>
